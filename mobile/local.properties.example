@@ -1,0 +1,18 @@
+# Triplane mobile — local config (gitignored as `local.properties`).
+#
+# Copy this file to `local.properties` and fill in real values.
+#
+# Required:
+#   sdk.dir — path to your Android SDK installation
+#
+# Required for Clerk auth (Phase 7+):
+#   CLERK_PUBLISHABLE_KEY — from https://dashboard.clerk.com (use the same Clerk
+#                           app as your web counterpart so users sign in once)
+#
+# Required for maps (when you start using kmp-maps):
+#   GOOGLE_MAPS_API_KEY — from Google Cloud Console → Maps SDK for Android
+#                         (Apple Maps on iOS needs no key)
+
+sdk.dir=/Users/YOUR_USER/Library/Android/sdk
+CLERK_PUBLISHABLE_KEY=pk_test_...
+GOOGLE_MAPS_API_KEY=AIza...
