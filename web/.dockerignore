@@ -1,0 +1,71 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Dependencies (will be installed fresh in the container)
+node_modules
+.pnp
+.pnp.js
+
+# Build output (will be rebuilt in the container)
+.next
+out
+dist
+build
+
+# Prisma generated client (regenerated in builder stage)
+src/generated
+
+# Environment files — NEVER copy these into the image
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+# Keep .env.example for reference if you have one
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / IDE
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+.nyc_output
+
+# Next.js specific
+.next
+next-env.d.ts
+
+# Misc
+.vercel
+.turbo
+.cache
+tmp
+temp
+
+# Documentation that doesn't need to be in the image
+README.md
+PLAN.md
+*.md
+!prisma/**/*.md
+
+# Docker files themselves (avoid recursive copy)
+Dockerfile
+Dockerfile.*
+.dockerignore
+docker-compose*.yml

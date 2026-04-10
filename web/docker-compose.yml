@@ -1,0 +1,66 @@
+# Triplane web docker-compose
+#
+# Two ways to use this file:
+#
+# 1. App-only mode (default — uses your Neon connection string):
+#    docker compose up --build
+#
+# 2. App + local Postgres (fully offline dev):
+#    docker compose --profile local-db up --build
+#    Then set DATABASE_URL and DIRECT_URL in .env.local to point at the local db:
+#      DATABASE_URL="postgresql://postgres:postgres@db:5432/triplane?schema=public"
+#      DIRECT_URL="postgresql://postgres:postgres@db:5432/triplane?schema=public"
+#
+# For production deployments (Fly, Railway, Render, VPS, etc.), use this file as a
+# starting point. Remove the `build:` section and use a prebuilt image tag.
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: ./web/Dockerfile
+    image: triplane-web:latest
+    container_name: triplane-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/v1/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # Uncomment the depends_on block if using the local-db profile below
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
+
+  # Optional local Postgres — only starts with `--profile local-db`
+  db:
+    image: postgres:16-alpine
+    container_name: triplane-db
+    restart: unless-stopped
+    profiles:
+      - local-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: triplane
+    ports:
+      - "5432:5432"
+    volumes:
+      - triplane-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d triplane"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  triplane-db-data:

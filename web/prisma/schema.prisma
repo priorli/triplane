@@ -1,0 +1,25 @@
+// Triplane Prisma schema — minimal scaffold.
+//
+// Phase 2 ships with the User model only. Add your own models in Phase 4
+// (or in your downstream project). Soft delete is the convention — every
+// user-deletable entity should have `deletedAt DateTime?`.
+//
+// See `/PLAN.md` § Architecture principles #7 for the soft-delete rule.
+
+generator client {
+  provider      = "prisma-client"
+  output        = "../src/generated/prisma"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id              // Clerk user ID
+  email     String   @unique
+  role      String   @default("user") // "user" | "superadmin"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

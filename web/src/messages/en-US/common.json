@@ -1,0 +1,34 @@
+{
+  "nav": {
+    "appName": "Triplane",
+    "signIn": "Sign in",
+    "signOut": "Sign out"
+  },
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "saving": "Saving...",
+    "creating": "Creating...",
+    "deleting": "Deleting..."
+  },
+  "states": {
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "empty": "Nothing here yet"
+  },
+  "home": {
+    "welcome": "Welcome to Triplane",
+    "description": "Your authenticated home page. Replace this with your real app's home screen.",
+    "nextStepTitle": "Add your first feature",
+    "nextStepBody": "Use the /feature skill to draft a spec, scaffold the API and pages, and register the feature in PLAN.md.",
+    "apiDocsTitle": "API documentation",
+    "apiDocsBody": "Triplane ships with OpenAPI 3.1 docs via Scalar UI. Visit:"
+  },
+  "metadata": {
+    "title": "Triplane",
+    "description": "Priorli's full-stack monorepo template"
+  }
+}

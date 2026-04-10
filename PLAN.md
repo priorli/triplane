@@ -2,7 +2,7 @@
 
 > Priorli's full-stack monorepo template. **This is the template's own plan, not the plan for an app built from it.** When you `gh repo create my-app --template priorli/triplane`, replace this content with your app's plan (the structure stays).
 
-**Status:** Phase 1 in progress (skeleton + foundational docs).
+**Status:** Phases 1–2 complete. Phase 3 (mobile extraction) next.
 **Last updated:** April 10, 2026
 **Node.js required:** ≥ 20.9
 **Bun required:** ≥ 1.1
@@ -207,8 +207,8 @@ Build-type specific via `BuildConfig`:
 
 | Phase | Goal | Status |
 |---|---|---|
-| **1** | Skeleton + foundational docs (this file, CLAUDE.md, LESSONS.md, README, mobile_plan.md, `/feature` skill, empty directory tree) | 🟡 In progress |
-| **2** | Web extraction — strip Travolp from `web/`, keep clean Next.js + Clerk + i18n + Prisma + OpenAPI scaffold. Verify `bun run build`. | 🔲 Not started |
+| **1** | Skeleton + foundational docs (this file, CLAUDE.md, LESSONS.md, README, mobile_plan.md, `/feature` skill, empty directory tree) | ✅ Complete |
+| **2** | Web extraction — clean Next.js 16 + Clerk + i18n + Prisma + OpenAPI scaffold. Routes: `/[locale]` landing, `/[locale]/home` authenticated, `/[locale]/sign-in`, `/api/v1/health`, `/api/v1/docs` (Scalar UI), `/api/webhooks/clerk`. `bun run build` passes. | ✅ Complete |
 | **3** | Mobile extraction — strip Travolp from `mobile/`, keep clean CMP + KMM + Clean Architecture + Clerk Android auth + nav + DI scaffold. iOS auth stub. Verify Android + iOS Kotlin compile. | 🔲 Not started |
 | **4** | Items + photos example feature — full end-to-end: API (item CRUD + presign + attachments), web (list/detail/photo gallery), mobile (ItemsListScreen + ItemDetailScreen + Peekaboo + Coil 3). Spec file. Matrix entry. Proves the template runs and demonstrates cross-platform file upload. | 🔲 Not started |
 | **5** | Skills library — `/audit` (drift detector), `/scaffold` (new feature scaffolder), `/api-change` (cascade walker), `/upgrade-deps` (version cascade handler), `/release-check` (pre-release verification). | 🔲 Not started |
@@ -241,3 +241,4 @@ Build-type specific via `BuildConfig`:
 | 2026-04-10 | Native Clerk SDKs only — never WebView | Travolp tried 3 auth approaches before landing on native SDKs. Google blocks OAuth in embedded WebViews. The native path is documented as the only supported approach in CLAUDE.md and LESSONS.md. |
 | 2026-04-10 | Items + photos as the v0.1 example feature | Most ambitious example choice — pulls Tigris S3 and Peekaboo image picker into v0.1. Justified because cross-platform file upload is the hardest pattern to get right, and proving it works out of the box is the template's biggest selling point. |
 | 2026-04-10 | Versions pinned to known-coherent set | `libs.versions.toml` ships with the version set we know works together (Kotlin 2.3.10 / CMP 1.10.3 / AGP 8.9.1 / compileSdk 36 / Clerk Android 1.0.11 / kmp-maps 0.9.1). The `/upgrade-deps` skill (Phase 5) handles cascades when bumping. |
+| 2026-04-10 | Phase 2 — web extracted from Travolp | `web/` rsync'd from travolp/web/ excluding node_modules, .next, .env.local, bun.lock, generated/. Stripped: all trip/day/stop/leg/place/chat/attachment/admin code; Anthropic SDK; @react-google-maps/api; @dnd-kit; react-markdown/remark-gfm; trip-specific OpenAPI route registrations (10 files); 12 trip-specific Prisma models; 11 stale migrations; trip-related lib helpers (trip-days, leg-helpers, generate-itinerary, chat-tools, anthropic, google-places, google-directions, map-utils, config). Replaced: package.json (renamed `triplane-web`, dropped 8 trip-specific deps); auth.ts (replaced 5 entity-specific assertOwnership helpers with one generic `assertOwnership(loader)`); openapi/index.ts + openapi/responses.ts (Triplane branding, health-only); landing + (app)/layout.tsx + (app)/home/page.tsx (generic placeholder pointing to /api/v1/docs); messages/en-US/* (generic strings); .env.example. Verified: `bun install` (824 packages), `bun run build` clean — 7 routes generated, TypeScript clean. |
