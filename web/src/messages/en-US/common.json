@@ -2,7 +2,9 @@
   "nav": {
     "appName": "Triplane",
     "signIn": "Sign in",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "home": "Home",
+    "items": "Items"
   },
   "buttons": {
     "save": "Save",
@@ -12,7 +14,8 @@
     "create": "Create",
     "saving": "Saving...",
     "creating": "Creating...",
-    "deleting": "Deleting..."
+    "deleting": "Deleting...",
+    "uploading": "Uploading..."
   },
   "states": {
     "loading": "Loading…",
@@ -25,7 +28,42 @@
     "nextStepTitle": "Add your first feature",
     "nextStepBody": "Use the /feature skill to draft a spec, scaffold the API and pages, and register the feature in PLAN.md.",
     "apiDocsTitle": "API documentation",
-    "apiDocsBody": "Triplane ships with OpenAPI 3.1 docs via Scalar UI. Visit:"
+    "apiDocsBody": "Triplane ships with OpenAPI 3.1 docs via Scalar UI. Visit:",
+    "itemsCardTitle": "Items + Photos example",
+    "itemsCardBody": "Browse the example feature that ships with Triplane — CRUD plus presigned file uploads end-to-end.",
+    "itemsCardLink": "Open items"
+  },
+  "items": {
+    "listTitle": "Items",
+    "listSubtitle": "Your items with attached photos. Backed by /api/v1/items.",
+    "empty": "No items yet. Click “New item” to create your first one.",
+    "createButton": "New item",
+    "createDialogTitle": "Create item",
+    "createDialogBody": "Give it a title, optionally a description, and optionally pick a few photos to attach right away.",
+    "editDialogTitle": "Edit item",
+    "fields": {
+      "title": "Title",
+      "titlePlaceholder": "My item",
+      "description": "Description",
+      "descriptionPlaceholder": "Optional notes",
+      "photos": "Photos"
+    },
+    "deleteDialogTitle": "Delete item?",
+    "deleteDialogBody": "This soft-deletes the item. Photos are preserved but hidden.",
+    "deleteAttachmentDialogTitle": "Delete photo?",
+    "deleteAttachmentDialogBody": "This soft-deletes the photo. The file stays in storage until cleanup.",
+    "detail": {
+      "back": "All items",
+      "addPhotos": "Add photos",
+      "noPhotos": "No photos yet."
+    },
+    "errors": {
+      "loadFailed": "Could not load items.",
+      "createFailed": "Could not create item.",
+      "updateFailed": "Could not update item.",
+      "deleteFailed": "Could not delete item.",
+      "uploadFailed": "Photo upload failed."
+    }
   },
   "metadata": {
     "title": "Triplane",

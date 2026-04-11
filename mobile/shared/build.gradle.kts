@@ -30,7 +30,12 @@ kotlin {
             implementation(libs.ktor.client.logging)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
-            implementation(libs.kotlinx.datetime)
+            // `api` so downstream consumers (composeApp iosMain) can resolve
+            // kotlinx.datetime.Instant when it appears in shared domain model
+            // properties that get ObjC-exported. `implementation` here triggers
+            // Kotlin/Native ObjC-export crash (IrExternalPackageFragmentImpl
+            // cannot be cast to IrClass during createConstructorAdapter).
+            api(libs.kotlinx.datetime)
             implementation(libs.koin.core)
         }
         androidMain.dependencies {

@@ -151,20 +151,26 @@ GOOGLE_MAPS_API_KEY=AIza...         # Google Cloud → Maps SDK for Android
 
 | Sub-phase | Goal | Status |
 |---|---|---|
-| **3.0** | Mobile extraction from Travolp — clean CMP + KMM scaffold, Clerk Android auth, navigation, DI, Ktor API client | 🔲 |
-| **3.1** | Verify `:composeApp:assembleDebug` and `:composeApp:compileKotlinIosSimulatorArm64` both green | 🔲 |
-| **4.0** | Items + photos feature — list/detail/create/edit/delete + photo upload via Peekaboo + Coil 3 image loading | 🔲 |
-| **4.1** | Verify items feature on Android end-to-end (sign in → list → create → upload photo → view detail → delete) | 🔲 |
-| **7.0** | Clerk iOS SDK integration — replaces `AuthScreen.ios.kt` stub | 🔲 |
-| **7.1** | Verify items feature on iOS end-to-end (same flow) | 🔲 |
+| **3.0** | Mobile extraction from Travolp — clean CMP + KMM scaffold, Clerk Android auth, navigation, DI, Ktor API client | ✅ |
+| **3.1** | Verify `:composeApp:assembleDebug` and `:composeApp:compileKotlinIosSimulatorArm64` both green | ✅ |
+| **4.0** | Items + photos feature — list/detail/create/edit/delete + photo upload via Peekaboo + Coil 3 image loading | ✅ |
+| **4.1** | Verify items feature on Android end-to-end (sign in → list → create → upload photo → view detail → delete) | 🔲 deferred to user |
+| **7.0** | Clerk iOS SDK integration — Swift-side bridge via `ClerkAuthBridge` protocol, hand-authored `iosApp/` Xcode wrapper, Clerk iOS SDK 1.0.9 SPM, `xcodebuild build` green | ✅ |
+| **7.1** | Verify items feature on iOS end-to-end on a simulator — interactive sign-in, create, upload photo, view, delete | 🔲 deferred to user at keyboard |
 
 (Triplane phases 1, 2, 5, 6 are documentation/skills/web/polish — not in this mobile-specific tracker.)
 
 ---
 
-## Mobile parity gaps (until Phase 7)
+## Mobile parity — Phase 7 complete
 
-- **iOS** — `AuthScreen.ios.kt` is a stub (`Text("Phase 7")`). `rememberIsSignedIn()` hardcoded to `false`. `TokenStorageAuthProvider` reads from an empty store. All commonMain code compiles for iOS but no feature runs end-to-end. Phase 7 unblocks every feature on iOS at once.
+**iOS auth wiring** — `ClerkAuthBridge` interface in `composeApp/iosMain/.../feature/auth/` is implemented on the Swift side in `iosApp/iosApp/ClerkAuthBridgeImpl.swift` (using `MainActor.assumeIsolated` for sync methods and `Task { @MainActor in ... }` for async ones). `iOSApp.swift` calls `Clerk.configure(publishableKey:)` at startup (reading the key from Info.plist → `Config.xcconfig`) and installs the bridge via `ClerkAuthBridgeKt.setClerkAuthBridge(bridge:)` before Compose renders. `rememberIsSignedIn()` drives off `observeSignedIn` polling `Clerk.shared.user` from the main actor.
+
+**Known workaround** — all Phase 4 `composeApp/feature/items/*` public types are marked `internal` to sidestep a Kotlin/Native 2.3.10 ObjC-exporter cast crash (`IrExternalPackageFragmentImpl` cannot be cast to `IrClass` during `createConstructorAdapter`). Internal types aren't ObjC-exported, which bypasses the bug. Only the `feature/auth/ClerkAuthBridge.kt` types (`ClerkAuthBridge`, `AuthBridgeSubscription`, SAM callbacks, top-level accessor functions) remain public because Swift needs to see them. Upgrading to Kotlin 2.3.20 stable did NOT fix the crash.
+
+**iOS 17 minimum** — Clerk iOS 1.x requires iOS 17+. Set in `iosApp/Configuration/Config.xcconfig` as `IPHONEOS_DEPLOYMENT_TARGET = 17.0`.
+
+**Interactive verification is deferred to the user** — `xcodebuild build` compiles everything green but running through the actual sign-in flow in a simulator requires a human at the keyboard with a real Clerk publishable key.
 
 ---
 

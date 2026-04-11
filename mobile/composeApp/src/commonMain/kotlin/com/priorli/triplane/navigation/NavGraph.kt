@@ -6,10 +6,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.priorli.triplane.feature.auth.AuthScreen
 import com.priorli.triplane.feature.auth.rememberIsSignedIn
 import com.priorli.triplane.feature.auth.signOut
 import com.priorli.triplane.feature.home.HomeScreen
+import com.priorli.triplane.feature.items.ItemDetailScreen
+import com.priorli.triplane.feature.items.ItemsListScreen
 import kotlinx.coroutines.launch
 
 @Composable
@@ -18,7 +21,6 @@ fun NavGraph() {
     val isSignedIn = rememberIsSignedIn()
     val scope = rememberCoroutineScope()
 
-    // React to sign-in state changes (e.g., after sign-out from elsewhere)
     LaunchedEffect(isSignedIn) {
         val currentRoute = navController.currentDestination?.route
         if (!isSignedIn && currentRoute != null && !currentRoute.contains("Auth")) {
@@ -43,11 +45,22 @@ fun NavGraph() {
         }
         composable<Home> {
             HomeScreen(
-                onSignOut = {
-                    scope.launch { signOut() }
-                },
+                onNavigateToItems = { navController.navigate(ItemsList) },
+                onSignOut = { scope.launch { signOut() } },
             )
         }
-        // Add new routes here as features are added.
+        composable<ItemsList> {
+            ItemsListScreen(
+                onItemClick = { itemId -> navController.navigate(ItemDetail(itemId)) },
+                onBack = { navController.navigateUp() },
+            )
+        }
+        composable<ItemDetail> { backStackEntry ->
+            val route = backStackEntry.toRoute<ItemDetail>()
+            ItemDetailScreen(
+                itemId = route.itemId,
+                onBack = { navController.navigateUp() },
+            )
+        }
     }
 }

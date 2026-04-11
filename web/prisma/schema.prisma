@@ -17,9 +17,42 @@ datasource db {
 }
 
 model User {
-  id        String   @id              // Clerk user ID
-  email     String   @unique
-  role      String   @default("user") // "user" | "superadmin"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String       @id              // Clerk user ID
+  email       String       @unique
+  role        String       @default("user") // "user" | "superadmin"
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  items       Item[]
+  attachments Attachment[]
+}
+
+model Item {
+  id          String       @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+  user        User         @relation(fields: [userId], references: [id])
+  attachments Attachment[]
+
+  @@index([userId, deletedAt])
+}
+
+model Attachment {
+  id         String    @id @default(cuid())
+  userId     String
+  itemId     String
+  fileName   String
+  fileType   String
+  fileSize   Int
+  storageKey String    @unique
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+  user       User      @relation(fields: [userId], references: [id])
+  item       Item      @relation(fields: [itemId], references: [id])
+
+  @@index([itemId, deletedAt])
+  @@index([userId, deletedAt])
 }

@@ -1,0 +1,14 @@
+// Triplane iOS app build configuration.
+//
+// Fill in TEAM_ID with your Apple Developer Team ID before archiving for
+// distribution. DEVELOPMENT_TEAM can stay empty for local simulator builds.
+//
+// CLERK_PUBLISHABLE_KEY is read by iOSApp.swift from Info.plist, which
+// expands this variable at build time. Use pk_test_... for development and
+// pk_live_... for production.
+
+TEAM_ID =
+BUNDLE_ID = com.priorli.triplane
+APP_NAME = Triplane
+CLERK_PUBLISHABLE_KEY =
+IPHONEOS_DEPLOYMENT_TARGET = 17.0

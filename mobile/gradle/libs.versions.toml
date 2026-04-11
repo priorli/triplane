@@ -11,6 +11,8 @@ navigation-compose = "2.9.2"
 lifecycle = "2.10.0"
 clerk-android = "1.0.11"
 kmp-maps = "0.9.1"
+peekaboo = "0.5.2"
+coil = "3.4.0"
 android-compileSdk = "36"
 android-minSdk = "26"
 android-targetSdk = "35"
@@ -48,6 +50,15 @@ clerk-android-ui = { module = "com.clerk:clerk-android-ui", version.ref = "clerk
 
 # KMP Maps (cross-platform: Google Maps on Android, Apple Maps on iOS)
 kmp-maps-core = { module = "com.swmansion.kmpmaps:core", version.ref = "kmp-maps" }
+
+# Peekaboo (cross-platform image picker — commonMain, no expect/actual)
+peekaboo-image-picker = { module = "io.github.onseok:peekaboo-image-picker", version.ref = "peekaboo" }
+
+# Coil 3 (cross-platform async image loading)
+# `coil-network-ktor3` is the multiplatform network fetcher built on Ktor 3;
+# don't substitute `coil-network-okhttp` which is JVM-only.
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

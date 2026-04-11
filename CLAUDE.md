@@ -67,10 +67,12 @@ The full numbered list (with rationale) is in `PLAN.md` § Architecture principl
 ```bash
 cd web && bun run build                                                       # web
 cd mobile && ./gradlew :composeApp:assembleDebug                              # Android
-cd mobile && ./gradlew :composeApp:compileKotlinIosSimulatorArm64             # iOS
+cd mobile && ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64        # iOS framework (includes ObjC export)
 ```
 
-The `/release-check` skill (when shipped — Phase 5) runs all three at once.
+**Do not** use `:composeApp:compileKotlinIosSimulatorArm64` as the iOS verification target. That task only performs source-level compilation and does NOT run the ObjC header exporter — which means it can silently green while the framework link task fails. Phase 4 shipped an ObjC-export crash this way and it took until Phase 7 to find. The `linkDebugFrameworkIosSimulatorArm64` task runs the full framework build including ObjC export and is the correct bar.
+
+The `/release-check` skill runs all three in parallel and then invokes `/audit` for drift detection — prefer it.
 
 ## Common gotchas (from LESSONS.md)
 
@@ -78,7 +80,24 @@ The `/release-check` skill (when shipped — Phase 5) runs all three at once.
 - **Stale Gradle cache** after dependency changes — fix with `./gradlew :composeApp:compileDebugKotlinAndroid --rerun-tasks`.
 - **iOS doesn't run end-to-end until Phase 7** ships (Clerk iOS SDK). All commonMain code compiles for iOS, but auth is stubbed.
 - **Library docs lie. Read the source on GitHub** when integrating a new dependency — especially Dokka-generated docs which often 404.
-- **Cascading version bumps** — adopting one library can force Kotlin/CMP/AGP/compileSdk upgrades. Use the `/upgrade-deps` skill (when shipped — Phase 5) to handle the cascade.
+- **Cascading version bumps** — adopting one library can force Kotlin/CMP/AGP/compileSdk upgrades. Use the `/upgrade-deps` skill to handle the cascade.
+- **Next.js 16 `params` is a `Promise<...>`** — always `await params` in route handlers and Server Components. In Client Components, use `use(params)` from React.
+- **`coil-network-okhttp` is JVM-only** — use `coil-network-ktor3` instead for Compose Multiplatform.
+- **KDoc and unbalanced braces** — Kotlin/Native's KDoc parser chokes on `{...}` text that looks like unclosed inline tags. Prefer `//` line comments when the text contains braces.
+- **Kotlin/Native ObjC exporter crashes on some composeApp public types** — Kotlin/Native 2.3.10 and 2.3.20 have a `ClassCastException` inside `createConstructorAdapter` that trips on Phase 4-shaped composeApp types. **Workaround: mark `composeApp/feature/<name>/*` types as `internal`** so they're excluded from the ObjC export surface. Swift-facing bridge types (e.g. `feature/auth/ClerkAuthBridge.kt`) stay public. See the 2026-04-11 Phase 7 decisions log entry in PLAN.md for the full remediation story.
+
+## Available skills
+
+All six skills live under `.claude/skills/<name>/SKILL.md` and auto-trigger from natural-language prompts. Prefer them over reciting the underlying workflow.
+
+| Skill | Purpose |
+|---|---|
+| `/feature` | Spec-driven feature workflow — **add** (draft spec), **check** (verify spec vs code), **continue** (implement). The primary authoring skill. |
+| `/audit` | Repo-wide drift detector. Cross-checks every spec's checkboxes against `PLAN.md` matrix and actual code. Read-only. |
+| `/scaffold` | New-feature file scaffolder. Generates placeholder files following the Items + Photos canonical structure. Refuses without an approved spec. |
+| `/api-change` | Endpoint cascade walker. Enumerates the ~12 places a single `/api/v1/*` change propagates (zod, OpenAPI, server, client, mobile DTOs, mapper, domain, screens, spec). |
+| `/upgrade-deps` | Version cascade handler. Researches target version's own pins, updates `libs.versions.toml`, clean-rebuilds, logs the new set in PLAN.md. |
+| `/release-check` | Runs web + Android + iOS build verifications in parallel, then `/audit`, reports a single summary. |
 
 ## Working with Claude Code on this project
 

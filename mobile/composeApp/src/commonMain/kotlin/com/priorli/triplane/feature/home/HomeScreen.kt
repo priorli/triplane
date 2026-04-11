@@ -11,14 +11,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * Placeholder authenticated home screen. Triplane v0.1 ships this as a starting
- * point — replace it with your real app's home screen when you start building.
- *
- * Phase 4 (items + photos) will replace this with `ItemsListScreen`.
+ * Post-auth landing screen. Kept minimal on purpose so Phase 7 (iOS auth)
+ * can smoke-test sign-in → land here without pulling feature code into the
+ * iOS bring-up. Feature entry points like Items link out from here.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
+    onNavigateToItems: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     Scaffold(
@@ -52,15 +52,15 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(16.dp))
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(modifier = Modifier.fillMaxWidth(), onClick = onNavigateToItems) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Add your first feature",
+                        text = "Items + Photos example",
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "Use the /feature skill to draft a spec, scaffold the API and screens, and register the feature in PLAN.md.",
+                        text = "Browse the example feature that ships with Triplane — CRUD plus presigned file uploads end-to-end.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

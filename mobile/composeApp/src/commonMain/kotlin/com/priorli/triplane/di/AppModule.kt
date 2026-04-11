@@ -1,19 +1,20 @@
 package com.priorli.triplane.di
 
+import com.priorli.triplane.feature.items.ItemDetailViewModel
+import com.priorli.triplane.feature.items.ItemsViewModel
+import org.koin.core.module.dsl.viewModel
+import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
-/**
- * Compose-side Koin module — register ViewModels and any composeApp-only services here.
- *
- * Phase 3 ships empty (no ViewModels in the scaffold). Add registrations as you build features:
- *
- *   import org.koin.core.module.dsl.viewModelOf
- *
- *   val appModule = module {
- *     viewModelOf(::ItemsViewModel)
- *     viewModelOf(::ItemDetailViewModel)
- *   }
- */
 val appModule = module {
-    // Register ViewModels with viewModelOf(::YourViewModel)
+    viewModelOf(::ItemsViewModel)
+    viewModel { (itemId: String) ->
+        ItemDetailViewModel(
+            itemId = itemId,
+            getItem = get(),
+            deleteItem = get(),
+            uploadAttachment = get(),
+            deleteAttachment = get(),
+        )
+    }
 }

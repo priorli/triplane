@@ -1,0 +1,389 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		TRPL0001000000000000A001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = TRPL0001000000000000F007 /* Assets.xcassets */; };
+		TRPL0001000000000000A002 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = TRPL0001000000000000F008 /* Preview Assets.xcassets */; };
+		TRPL0001000000000000A003 /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRPL0001000000000000F002 /* iOSApp.swift */; };
+		TRPL0001000000000000A004 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRPL0001000000000000F003 /* ContentView.swift */; };
+		TRPL0001000000000000A005 /* ClerkAuthBridgeImpl.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRPL0001000000000000F004 /* ClerkAuthBridgeImpl.swift */; };
+		TRPL0001000000000000A006 /* AuthScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRPL0001000000000000F005 /* AuthScreenView.swift */; };
+		TRPL0001000000000000A007 /* ClerkKit in Frameworks */ = {isa = PBXBuildFile; productRef = TRPL0001000000000000D001 /* ClerkKit */; };
+		TRPL0001000000000000A008 /* ClerkKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = TRPL0001000000000000D002 /* ClerkKitUI */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		TRPL0001000000000000F001 /* Triplane.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Triplane.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		TRPL0001000000000000F002 /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
+		TRPL0001000000000000F003 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		TRPL0001000000000000F004 /* ClerkAuthBridgeImpl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClerkAuthBridgeImpl.swift; sourceTree = "<group>"; };
+		TRPL0001000000000000F005 /* AuthScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthScreenView.swift; sourceTree = "<group>"; };
+		TRPL0001000000000000F006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		TRPL0001000000000000F007 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		TRPL0001000000000000F008 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		TRPL0001000000000000F009 /* Config.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		TRPL0001000000000000B003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TRPL0001000000000000A007 /* ClerkKit in Frameworks */,
+				TRPL0001000000000000A008 /* ClerkKitUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		TRPL0001000000000000G001 /* Root */ = {
+			isa = PBXGroup;
+			children = (
+				TRPL0001000000000000G004 /* Configuration */,
+				TRPL0001000000000000G003 /* iosApp */,
+				TRPL0001000000000000G002 /* Products */,
+				TRPL0001000000000000G007 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		TRPL0001000000000000G002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				TRPL0001000000000000F001 /* Triplane.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		TRPL0001000000000000G003 /* iosApp */ = {
+			isa = PBXGroup;
+			children = (
+				TRPL0001000000000000F002 /* iOSApp.swift */,
+				TRPL0001000000000000F003 /* ContentView.swift */,
+				TRPL0001000000000000F004 /* ClerkAuthBridgeImpl.swift */,
+				TRPL0001000000000000F005 /* AuthScreenView.swift */,
+				TRPL0001000000000000F006 /* Info.plist */,
+				TRPL0001000000000000F007 /* Assets.xcassets */,
+				TRPL0001000000000000G005 /* Preview Content */,
+			);
+			path = iosApp;
+			sourceTree = "<group>";
+		};
+		TRPL0001000000000000G004 /* Configuration */ = {
+			isa = PBXGroup;
+			children = (
+				TRPL0001000000000000F009 /* Config.xcconfig */,
+			);
+			path = Configuration;
+			sourceTree = "<group>";
+		};
+		TRPL0001000000000000G005 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				TRPL0001000000000000F008 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		TRPL0001000000000000G007 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		TRPL0001000000000000T001 /* iosApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = TRPL0001000000000000L002 /* Build configuration list for PBXNativeTarget "iosApp" */;
+			buildPhases = (
+				TRPL0001000000000000S001 /* Compile Kotlin Framework */,
+				TRPL0001000000000000B001 /* Sources */,
+				TRPL0001000000000000B002 /* Resources */,
+				TRPL0001000000000000B003 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = iosApp;
+			packageProductDependencies = (
+				TRPL0001000000000000D001 /* ClerkKit */,
+				TRPL0001000000000000D002 /* ClerkKitUI */,
+			);
+			productName = iosApp;
+			productReference = TRPL0001000000000000F001 /* Triplane.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		TRPL0001000000000000P001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				ORGANIZATIONNAME = Priorli;
+				TargetAttributes = {
+					TRPL0001000000000000T001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = TRPL0001000000000000L001 /* Build configuration list for PBXProject "iosApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = TRPL0001000000000000G001;
+			packageReferences = (
+				TRPL0001000000000000M001 /* XCRemoteSwiftPackageReference "clerk-ios" */,
+			);
+			productRefGroup = TRPL0001000000000000G002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				TRPL0001000000000000T001 /* iosApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		TRPL0001000000000000B002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TRPL0001000000000000A002 /* Preview Assets.xcassets in Resources */,
+				TRPL0001000000000000A001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		TRPL0001000000000000S001 /* Compile Kotlin Framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Compile Kotlin Framework";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :composeApp:embedAndSignAppleFrameworkForXcode\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		TRPL0001000000000000B001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				TRPL0001000000000000A003 /* iOSApp.swift in Sources */,
+				TRPL0001000000000000A004 /* ContentView.swift in Sources */,
+				TRPL0001000000000000A005 /* ClerkAuthBridgeImpl.swift in Sources */,
+				TRPL0001000000000000A006 /* AuthScreenView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		TRPL0001000000000000C001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = TRPL0001000000000000F009 /* Config.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		TRPL0001000000000000C002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = TRPL0001000000000000F009 /* Config.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		TRPL0001000000000000C003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
+				DEVELOPMENT_TEAM = "$(TEAM_ID)";
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
+				);
+				INFOPLIST_FILE = iosApp/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					ComposeApp,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID)";
+				PRODUCT_NAME = "$(APP_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		TRPL0001000000000000C004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
+				DEVELOPMENT_TEAM = "$(TEAM_ID)";
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
+				);
+				INFOPLIST_FILE = iosApp/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					ComposeApp,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID)";
+				PRODUCT_NAME = "$(APP_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		TRPL0001000000000000L001 /* Build configuration list for PBXProject "iosApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TRPL0001000000000000C001 /* Debug */,
+				TRPL0001000000000000C002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		TRPL0001000000000000L002 /* Build configuration list for PBXNativeTarget "iosApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				TRPL0001000000000000C003 /* Debug */,
+				TRPL0001000000000000C004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		TRPL0001000000000000M001 /* XCRemoteSwiftPackageReference "clerk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/clerk/clerk-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.9;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		TRPL0001000000000000D001 /* ClerkKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = TRPL0001000000000000M001 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = ClerkKit;
+		};
+		TRPL0001000000000000D002 /* ClerkKitUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = TRPL0001000000000000M001 /* XCRemoteSwiftPackageReference "clerk-ios" */;
+			productName = ClerkKitUI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = TRPL0001000000000000P001 /* Project object */;
+}

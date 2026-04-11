@@ -3,6 +3,8 @@ import { createGenerator } from "./registry";
 // Import all route registrations (side-effect imports).
 // Add a new line here when you register a new route file.
 import "./routes/health";
+import "./routes/items";
+import "./routes/attachments";
 
 export function generateOpenAPIDocument() {
   const generator = createGenerator();

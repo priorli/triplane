@@ -45,30 +45,116 @@ Versions are pinned in `web/package.json` and `mobile/gradle/libs.versions.toml`
 
 ## Status
 
-**Triplane is under active construction.** This is the initial scaffold. Sub-phases:
+**v0.1 is ready.** The template is runnable end-to-end on web, Android, and iOS. `xcodebuild build` against `mobile/iosApp/iosApp.xcodeproj` compiles green and hooks into Clerk iOS SDK 1.0.9 via the Swift/Kotlin bridge.
 
 | Phase | Status | What it delivers |
 |---|---|---|
-| 1. Skeleton + docs | 🟡 In progress | Directory tree, LESSONS.md, README, PLAN.md, CLAUDE.md, `/feature` skill |
-| 2. Web extraction | 🔲 | Clean Next.js + Clerk + i18n + Prisma + OpenAPI scaffold from Travolp |
-| 3. Mobile extraction | 🔲 | Clean CMP + KMM + Clean Architecture + auth scaffold from Travolp |
-| 4. Items + photos example | 🔲 | One end-to-end feature: API + web + mobile + spec + matrix entry. Proves the template runs and demonstrates the hardest pattern (cross-platform file upload). |
-| 5. Skills library | 🔲 | `/audit`, `/scaffold`, `/api-change`, `/upgrade-deps`, `/release-check` |
-| 6. Polish | 🔲 | `bin/init.sh` (rename placeholders), CI templates, getting-started guide, v0.1 release |
+| 1. Skeleton + docs | ✅ | Directory tree, LESSONS.md, README, PLAN.md, CLAUDE.md, `/feature` skill |
+| 2. Web extraction | ✅ | Clean Next.js 16 + Clerk + i18n + Prisma 7 + OpenAPI scaffold |
+| 3. Mobile extraction | ✅ | Clean CMP 1.10 + KMM + Clean Architecture + Clerk Android scaffold |
+| 4. Items + photos example | ✅ | End-to-end feature: API + web + mobile with cross-platform presigned-URL file upload |
+| 5. Skills library | ✅ | `/audit`, `/scaffold`, `/api-change`, `/upgrade-deps`, `/release-check` shipped alongside `/feature` |
+| 6. Polish | ✅ | `bin/init.sh` rename script, GitHub Actions CI, getting-started guide |
+| 7. iOS auth | ✅ | Clerk iOS SDK 1.0.9 integration via Swift/Kotlin bridge, hand-authored `iosApp/` Xcode wrapper |
 
-See `PLAN.md` for the full plan.
+See `PLAN.md` for the full plan, architecture principles, and decisions log.
 
-## How to use this template (once v0.1 ships)
+## Getting started
+
+### 1. Create your repo from the template
 
 ```bash
-gh repo create my-app --template priorli/triplane --private
-cd my-app
-./bin/init.sh my-app   # rename placeholders, generate env files
-cd web && bun install
-cd ../mobile && ./gradlew :composeApp:assembleDebug
+gh repo create my-awesome-app --template priorli/triplane --private
+cd my-awesome-app
 ```
 
-Then ask Claude Code: `/feature add my-first-feature`. The skill will draft the spec, scaffold web + mobile + API, and walk you through implementation.
+### 2. Rename placeholders
+
+```bash
+./bin/init.sh my-awesome-app com.myorg.myawesomeapp
+```
+
+This renames Kotlin packages (`com.priorli.triplane` → your namespace), moves the source directory layout to match, updates Android `namespace` + `applicationId`, renames `web/package.json`, and copies `web/.env.example` → `web/.env.local` plus `mobile/local.properties.example` → `mobile/local.properties` so you have somewhere to put your secrets.
+
+It deliberately does **not** rewrite `README.md`, `PLAN.md`, `LESSONS.md`, `CLAUDE.md`, or `mobile_plan.md` — you should rewrite those for your project, not have a script mangle them.
+
+Review the changes, then commit:
+
+```bash
+git add -A
+git commit -m "Initialize my-awesome-app from Triplane template"
+```
+
+### 3. Provision backing services
+
+Triplane needs three external services:
+
+- **Neon** (serverless Postgres) — sign up at [neon.tech](https://neon.tech), create a project, copy the connection string into `web/.env.local` as `DATABASE_URL` and `DIRECT_URL`.
+- **Clerk** (auth) — create an application at [dashboard.clerk.com](https://dashboard.clerk.com), copy `pk_test_…` and `sk_test_…` into `web/.env.local`, and copy the `pk_test_…` into `mobile/local.properties` as `CLERK_PUBLISHABLE_KEY`.
+- **Tigris** (S3-compatible storage, optional — only needed if you keep the items + photos example or build any file upload feature) — run `fly storage create` after `fly launch`, copy `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3`, and `TIGRIS_BUCKET_NAME` into `web/.env.local`.
+
+If you're going to run the mobile app on Android, also add `GOOGLE_MAPS_API_KEY` to `mobile/local.properties` (Google Cloud → Maps SDK for Android).
+
+### 4. Run the database migration
+
+```bash
+cd web
+bun install
+bunx prisma migrate dev --name init
+```
+
+The initial schema includes `User`, `Item`, and `Attachment` — the items + photos example uses all three.
+
+### 5. Run the apps locally
+
+```bash
+# Web (from web/)
+bun run dev
+# → http://localhost:3000
+
+# Android (from another terminal, in mobile/)
+./gradlew :composeApp:assembleDebug
+# Open mobile/ in Android Studio or IntelliJ to run on an emulator.
+```
+
+iOS — `./gradlew :composeApp:compileKotlinIosSimulatorArm64` will succeed, but the app cannot run end-to-end until Phase 7 (Clerk iOS SDK integration) ships. All commonMain code compiles for iOS; only auth is stubbed.
+
+### 6. Add your first feature with Claude Code
+
+Open Claude Code in the project root and run:
+
+```
+/feature add notes
+```
+
+The `/feature` skill will read `specs/features/_template.md`, draft a spec for you, wait for your approval, and then walk you through implementation on web + mobile. The related `/scaffold` skill generates empty source-file stubs; `/api-change` walks the cascade when you evolve an endpoint; `/release-check` runs all three build verifications in parallel.
+
+Full list of shipped skills:
+
+| Skill | What it does |
+|---|---|
+| `/feature` | Spec-driven feature workflow (add / check / continue) |
+| `/audit` | Repo-wide drift detector — spec ↔ matrix ↔ code |
+| `/scaffold` | New-feature file scaffolder (requires approved spec) |
+| `/api-change` | Endpoint cascade walker — OpenAPI + server + mobile DTOs + screens + spec |
+| `/upgrade-deps` | Kotlin / CMP / AGP / compileSdk cascade handler |
+| `/release-check` | Runs web + Android + iOS build verifications in parallel, then `/audit` |
+
+### 7. Verify builds
+
+Before shipping any change:
+
+```bash
+cd web && bun run build                                                  # web
+cd mobile && ./gradlew :composeApp:assembleDebug                         # Android
+cd mobile && ./gradlew :composeApp:compileKotlinIosSimulatorArm64        # iOS compile
+```
+
+Or, inside Claude Code: `/release-check`.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` ships with three parallel jobs running the same three build verifications on every push and pull request. It does not require any GitHub secrets — placeholder environment variables let the web build complete without reaching real services. Add real secrets only when you wire up a deploy workflow.
 
 ## Documents
 

@@ -23,6 +23,8 @@ class ApiClient(
         encodeDefaults = false
     }
 
+    // Authenticated API client: attaches a Bearer token to every request and
+    // points at the Triplane API baseUrl. Use for all /api/v1/* calls.
     val httpClient = HttpClient {
         install(ContentNegotiation) {
             json(this@ApiClient.json)
@@ -76,6 +78,18 @@ class ApiClient(
                     )
                 }
             }
+        }
+    }
+
+    // Raw HTTP client used only for uploading bytes to presigned URLs (e.g.,
+    // Tigris). Intentionally has no Authorization header, no baseUrl, no JSON
+    // content negotiation, and no response validator. Presigned URLs are
+    // self-authenticating via the signed query string, and object-storage
+    // error responses do not match the Triplane API error envelope.
+    val uploadHttpClient = HttpClient {
+        install(HttpTimeout) {
+            requestTimeoutMillis = 60_000
+            connectTimeoutMillis = 10_000
         }
     }
 }
