@@ -88,14 +88,16 @@ The `/release-check` skill runs all three in parallel and then invokes `/audit` 
 
 ## Available skills
 
-All six skills live under `.claude/skills/<name>/SKILL.md` and auto-trigger from natural-language prompts. Prefer them over reciting the underlying workflow.
+All eight skills live under `.claude/skills/<name>/SKILL.md` and auto-trigger from natural-language prompts. Prefer them over reciting the underlying workflow. Skills are grouped below: the first two bootstrap a downstream project from the template; the middle four drive day-to-day feature work; the last two handle cross-cutting maintenance.
 
 | Skill | Purpose |
 |---|---|
+| `/ideate` | Raw-idea brainstormer. Adaptive 5–8 question Q&A that produces `IDEA.md` at repo root — product description, target user, MVP feature backlog. First step when bootstrapping a new product from the template. |
+| `/init-app` | One-shot downstream bootstrapper. Consumes `IDEA.md`, wraps `bin/init.sh`, rewrites `PLAN.md`/`README.md`/`mobile_plan.md` template-meta, auto-renames display strings (Compose + web + Prisma), resets the feature matrix, build-verifies, then loops `/feature add` for each MVP backlog item. Refuses on an already-initialized template. |
 | `/feature` | Spec-driven feature workflow — **add** (draft spec), **check** (verify spec vs code), **continue** (implement). The primary authoring skill. |
-| `/audit` | Repo-wide drift detector. Cross-checks every spec's checkboxes against `PLAN.md` matrix and actual code. Read-only. |
 | `/scaffold` | New-feature file scaffolder. Generates placeholder files following the Items + Photos canonical structure. Refuses without an approved spec. |
 | `/api-change` | Endpoint cascade walker. Enumerates the ~12 places a single `/api/v1/*` change propagates (zod, OpenAPI, server, client, mobile DTOs, mapper, domain, screens, spec). |
+| `/audit` | Repo-wide drift detector. Cross-checks every spec's checkboxes against `PLAN.md` matrix and actual code. Read-only. |
 | `/upgrade-deps` | Version cascade handler. Researches target version's own pins, updates `libs.versions.toml`, clean-rebuilds, logs the new set in PLAN.md. |
 | `/release-check` | Runs web + Android + iOS build verifications in parallel, then `/audit`, reports a single summary. |
 
