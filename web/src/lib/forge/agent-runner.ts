@@ -141,7 +141,7 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     abortController,
     env: {
       ...process.env,
-      CLAUDE_AGENT_SDK_CLIENT_APP: "triplane-forge/0.1.0",
+      CLAUDE_AGENT_SDK_CLIENT_APP: "triplane-forge/0.1.2",
     },
     canUseTool: async (toolName, input, ctx) => {
       if (args.onApproval) {

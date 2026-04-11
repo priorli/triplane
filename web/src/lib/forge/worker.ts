@@ -7,6 +7,64 @@ export interface StartWorkerArgs {
   worktreePath: string;
   /** Form inputs the user provided via the /forge/new page. */
   inputs: SessionInputs;
+  /**
+   * When true, run `/plan-autoplan` (the five-role CEO/Eng/Design/DevEx/QA
+   * planning review) before `/init-app`. Produces `PLAN_REVIEW.md` in the
+   * worktree. If the plan phase fails, the session fails and `/init-app`
+   * never runs. Defaults to false — existing flow is unchanged.
+   */
+  planReview?: boolean;
+  /**
+   * When true, run `/seed-demo` after `/init-app` succeeds and before the
+   * session is marked `ready`. Populates the downstream project's local DB
+   * with Faker-powered demo records for a presentation. Non-fatal: a seed
+   * failure is recorded as an error event but does not fail the session —
+   * the bootstrap itself is the primary deliverable. Defaults to false.
+   */
+  seedDemo?: boolean;
+}
+
+function buildPlanAutoplanPrompt(): string {
+  return [
+    "Run /plan-autoplan.",
+    "",
+    "IDEA.md is at the repo root. Produce PLAN_REVIEW.md with CEO,",
+    "Engineering, Design, DevEx, and QA review sections, followed by a",
+    "Next steps block.",
+    "",
+    "Do NOT touch source files. Do NOT draft spec files under specs/**.",
+    "Do NOT run bin/init.sh or rewrite-docs.sh. The plan review is read-only",
+    "except for appending sections to PLAN_REVIEW.md.",
+    "",
+    "Start with Step 1 now.",
+  ].join("\n");
+}
+
+function buildSeedDemoPrompt(): string {
+  return [
+    "Run /seed-demo.",
+    "",
+    "The downstream project has just been bootstrapped by /init-app. The",
+    "Prisma schema is at `web/prisma/schema.prisma`, the seed stub is at",
+    "`web/prisma/seed.ts`, and the package.json is at `web/package.json`.",
+    "",
+    "Follow the skill's steps: read the schema, overwrite the seed stub",
+    "with a Faker-powered generator scoped to DEMO_USER_ID, patch",
+    "package.json (add @faker-js/faker + prisma seed config + db:seed",
+    "script), run `bun install`, and — if DATABASE_URL is set in",
+    "`web/.env.local` or `web/.env` — run `bun run db:seed` to populate",
+    "the DB.",
+    "",
+    "This is a non-fatal postlude. If DATABASE_URL is missing, generate",
+    "the files but do NOT fail the session — just print the command the",
+    "user should run themselves.",
+    "",
+    "Do NOT touch source files outside web/prisma/seed.ts and",
+    "web/package.json. Do NOT create Attachments or call any object",
+    "storage. Do NOT modify CLAUDE.md, README.md, or any other docs.",
+    "",
+    "Start with Step 1 now.",
+  ].join("\n");
 }
 
 /**
@@ -139,6 +197,31 @@ export function startWorker(args: StartWorkerArgs): AbortController {
   // Fire and forget — do NOT await this in the caller
   void (async () => {
     try {
+      // Optional plan-review prelude. Runs /plan-autoplan in the same worktree
+      // and produces PLAN_REVIEW.md. Sequential, not parallel — the bootstrap
+      // phase must see the completed review doc on disk. If the plan phase
+      // fails, fail the session and do NOT run /init-app.
+      if (args.planReview) {
+        const reviewResult = await runAgent({
+          cwd: args.worktreePath,
+          prompt: buildPlanAutoplanPrompt(),
+          sessionId: args.sessionId,
+          abortController,
+          onApproval,
+          permissionMode: "default",
+          maxTurns: 40,
+          maxBudgetUsd: 1.5,
+        });
+
+        if (!reviewResult.completed) {
+          sessionStore.fail(
+            args.sessionId,
+            reviewResult.errorMessage ?? "Plan review did not complete",
+          );
+          return;
+        }
+      }
+
       const result = await runAgent({
         cwd: args.worktreePath,
         prompt,
@@ -154,6 +237,32 @@ export function startWorker(args: StartWorkerArgs): AbortController {
       });
 
       if (result.completed) {
+        // Optional seed-demo postlude. If the forge user ticked the
+        // "populate demo data" checkbox, run /seed-demo now to generate
+        // web/prisma/seed.ts + patch web/package.json + run bun install +
+        // optionally run `bun run db:seed`. Non-fatal: a seed failure is
+        // recorded as an error event but does NOT fail the session — the
+        // bootstrap is the primary deliverable, and the user can always
+        // re-run /seed-demo manually on the downstream project.
+        if (args.seedDemo) {
+          const seedResult = await runAgent({
+            cwd: args.worktreePath,
+            prompt: buildSeedDemoPrompt(),
+            sessionId: args.sessionId,
+            abortController,
+            onApproval,
+            permissionMode: "default",
+            maxTurns: 20,
+            maxBudgetUsd: 0.5,
+          });
+          if (!seedResult.completed) {
+            sessionStore.appendEvent(args.sessionId, "error", {
+              message: `Seed-demo failed (non-fatal): ${
+                seedResult.errorMessage ?? "unknown error"
+              }`,
+            });
+          }
+        }
         sessionStore.setStatus(args.sessionId, "ready");
       } else {
         sessionStore.fail(

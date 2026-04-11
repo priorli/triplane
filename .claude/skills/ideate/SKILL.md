@@ -161,6 +161,7 @@ Use a grep for `com.priorli.triplane` in `mobile/` + `web/` to decide which case
 
 ## Related skills
 
+- `/plan-autoplan` — optional critical pass between `/ideate` and `/init-app`. Runs a five-role review (CEO, Eng, Design, DevEx, QA) against `IDEA.md` and produces `PLAN_REVIEW.md` with scope cuts, risk list, interaction decisions, onboarding friction, test scenarios, and a Next steps block. The Triplane Forge web UI offers this as a "planning review" checkbox on `/forge/new` — tick it to have the forge worker run `/plan-autoplan` before `/init-app`. Recommended for real product ideas; skip for template demos.
 - `/init-app` — the natural next step on a pristine template clone. Consumes `IDEA.md` and bootstraps the downstream project (wraps `bin/init.sh`, rewrites docs, resets the feature matrix, loops `/feature add`).
 - `/feature add` — the natural next step on an already-initialized app. Use it once per MVP backlog item to draft a per-feature spec.
 - `/scaffold` — runs after `/feature add` to generate file stubs for a single feature.

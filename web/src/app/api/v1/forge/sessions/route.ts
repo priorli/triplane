@@ -64,10 +64,16 @@ export async function POST(request: Request) {
 
     // Kick off the worker (fire and forget — returns immediately).
     // The worker builds a /init-app trigger prompt from the form inputs.
+    // When planReview is true, it first runs /plan-autoplan to produce
+    // PLAN_REVIEW.md, then proceeds with /init-app. When seedDemo is true,
+    // after /init-app completes it runs /seed-demo as a non-fatal postlude
+    // to populate the downstream DB with Faker-powered demo records.
     startWorker({
       sessionId: state.sessionId,
       worktreePath: worktree.path,
       inputs: state.inputs,
+      planReview: input.planReview,
+      seedDemo: input.seedDemo,
     });
 
     return ok(

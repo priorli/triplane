@@ -38,9 +38,10 @@ These are the non-negotiable rules. Each came from a real pain point in Travolp.
 7. Mobile UI is feature-based (`feature/items/`, `feature/auth/`), not layer-based.
 8. Mobile auth uses native Clerk SDKs (Android + iOS). **Never WebView** — Google blocks OAuth in embedded WebViews.
 9. `Mobile (Android)` and `Mobile (iOS)` are separate columns in the feature matrix from day 1.
-10. Phase numbers are stable and never reused.
-11. commonMain by default, expect/actual at platform seams only.
-12. OpenAPI updated on every API change.
+10. Features target web + Android + iOS. The feature matrix in `PLAN.md` is the source of truth — a row can land incrementally (✅/✅/🔲/🔲), but drift between the matrix and the actual code is the real bug. Run `/audit` to check. **Exception:** developer-only tooling whose core mechanism cannot run on mobile (currently only the forge — `git worktree` + Claude Agent SDK + local filesystem + SSE worker). Mark those `N/A` in the mobile columns and justify in the decisions log. The test is "can't exist on mobile", not "harder on mobile".
+11. Phase numbers are stable and never reused.
+12. commonMain by default, expect/actual at platform seams only.
+13. OpenAPI updated on every API change.
 
 The full numbered list (with rationale) is in `PLAN.md` § Architecture principles.
 
@@ -88,12 +89,20 @@ The `/release-check` skill runs all three in parallel and then invokes `/audit` 
 
 ## Available skills
 
-All eight skills live under `.claude/skills/<name>/SKILL.md` and auto-trigger from natural-language prompts. Prefer them over reciting the underlying workflow. Skills are grouped below: the first two bootstrap a downstream project from the template; the middle four drive day-to-day feature work; the last two handle cross-cutting maintenance.
+All sixteen skills live under `.claude/skills/<name>/SKILL.md` and auto-trigger from natural-language prompts. Prefer them over reciting the underlying workflow. Skills are grouped below: the first two bootstrap a downstream project from the template; the plan-review family (CEO/Eng/Design/DevEx/QA + orchestrator) critiques an `IDEA.md` before bootstrap; `/seed-demo` and `/stub-external-api` fake data at the DB layer and HTTP-boundary layer respectively so a downstream project can demo before real data / real API keys exist; the middle four drive day-to-day feature work; the last two handle cross-cutting maintenance.
 
 | Skill | Purpose |
 |---|---|
 | `/ideate` | Raw-idea brainstormer. Adaptive 5–8 question Q&A that produces `IDEA.md` at repo root — product description, target user, MVP feature backlog. First step when bootstrapping a new product from the template. |
 | `/init-app` | One-shot downstream bootstrapper. Consumes `IDEA.md`, wraps `bin/init.sh`, rewrites `PLAN.md`/`README.md`/`mobile_plan.md` template-meta, auto-renames display strings (Compose + web + Prisma), resets the feature matrix, build-verifies, then loops `/feature add` for each MVP backlog item. Refuses on an already-initialized template. |
+| `/plan-autoplan` | Five-role planning review orchestrator. Chains `/plan-ceo-review` → `/plan-eng-review` → `/plan-design-review` → `/plan-devex-review` → `/plan-qa-review` on an `IDEA.md`, produces `PLAN_REVIEW.md` with per-reviewer sections and a `## Next steps` block. Invoked by the Triplane Forge web UI when the "planning review" checkbox is ticked; runs before `/init-app`. |
+| `/plan-ceo-review` | CEO-style scope and framing critique. Reads `IDEA.md`, appends `## CEO review` with scope cuts, target-user sharpening, and a 0–10 PMF score. |
+| `/plan-eng-review` | Engineering architecture + test-strategy review. Reads `CLAUDE.md § Architecture principles` + `§ Common gotchas`, appends `## Engineering review` with surface list (web / Android / iOS), risk list, and a 0–10 implementability score. |
+| `/plan-design-review` | Design rubric reviewer. Appends `## Design review` with a 4-axis rubric (clarity / discoverability / delight / accessibility), top 3 interaction decisions, and one "cut for v0.1" call. Prose only — no mocks. |
+| `/plan-devex-review` | Developer-experience reviewer. Appends `## DevEx review` with top 3 onboarding friction points and recommended `README.md` / `CLAUDE.md` additions for the downstream project. Recommendations only — does not edit docs directly. |
+| `/plan-qa-review` | Plan-phase QA reviewer — **no browser automation**. Appends `## QA review` with per-feature test scenarios, cross-feature risks, a regression watchlist citing Triplane invariants, and a 0–10 testability score. Runs last in the `/plan-autoplan` chain. Live-browser `/qa` is roadmap. |
+| `/seed-demo` | Pre-presentation demo-data populator. Reads `web/prisma/schema.prisma`, generates/refreshes `web/prisma/seed.ts` with `@faker-js/faker`-powered fixtures scoped to `DEMO_USER_ID`, patches `web/package.json` (adds Faker + Prisma seed config + `db:seed` script), runs `bun install`, and optionally runs `bun run db:seed`. Idempotent (pinned Faker PRNG + hard-delete-then-reseed). Refuses on the pristine template. Re-runnable after `/feature add`. v1: Items-only, no Attachment seeding (skips S3). Optionally wired into `/forge/new` as a postlude checkbox. |
+| `/stub-external-api` | HTTP-boundary stubber for external services. Takes an OpenAPI spec URL, runs `openapi-typescript` to generate typed schemas, then scaffolds a stub/real client pair under `web/src/lib/<service>/` (schema.d.ts + client.ts + stub-client.ts + http-client.ts + factory.ts + index.ts) and appends `<SERVICE>_API_KEY` to `web/.env.example`. The factory returns the Faker-powered stub when the key is unset, the real `fetch()` client when it is — no code changes needed when the key arrives. Deterministic stubs via `faker.seed(hashOfRequestParams)`. Standalone-only (not wired into forge). Pairs with `/seed-demo` (DB layer) — both part of the "fake it until you ship it" toolkit. v1 requires an OpenAPI 3.x spec URL; Swagger 2 and spec-less services are v2. |
 | `/feature` | Spec-driven feature workflow — **add** (draft spec), **check** (verify spec vs code), **continue** (implement). The primary authoring skill. |
 | `/scaffold` | New-feature file scaffolder. Generates placeholder files following the Items + Photos canonical structure. Refuses without an approved spec. |
 | `/api-change` | Endpoint cascade walker. Enumerates the ~12 places a single `/api/v1/*` change propagates (zod, OpenAPI, server, client, mobile DTOs, mapper, domain, screens, spec). |

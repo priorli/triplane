@@ -26,6 +26,8 @@ export const createSessionRequestSchema = z.object({
     .regex(javaNamespace, "namespace must be dotted lowercase (e.g. com.myorg.app)"),
   displayName: z.string().min(1).max(80),
   brandColor: brandColorSchema.optional(),
+  planReview: z.boolean().optional().default(false),
+  seedDemo: z.boolean().optional().default(false),
 });
 
 export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;

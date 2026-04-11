@@ -51,6 +51,9 @@ export function NewProjectForm() {
   const [brandC, setBrandC] = useState(0.2);
   const [brandH, setBrandH] = useState(250);
 
+  const [planReview, setPlanReview] = useState(false);
+  const [seedDemo, setSeedDemo] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -119,6 +122,8 @@ export function NewProjectForm() {
           brandColor: brandEnabled
             ? { L: brandL, C: brandC, h: brandH }
             : undefined,
+          planReview,
+          seedDemo,
         }),
       });
       const body = await res.json();
@@ -354,6 +359,58 @@ export function NewProjectForm() {
               />
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("forge.form.planReviewSection")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={planReview}
+              onChange={(e) => setPlanReview(e.currentTarget.checked)}
+              disabled={submitting}
+              className="mt-1"
+            />
+            <span className="font-medium">
+              {t("forge.form.planReviewLabel")}
+            </span>
+          </label>
+          <p className="text-xs text-muted-foreground pl-6">
+            {t("forge.form.planReviewHint")}
+          </p>
+          <p className="text-xs text-muted-foreground pl-6">
+            {t("forge.form.planReviewDefault")}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t("forge.form.seedDemoSection")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={seedDemo}
+              onChange={(e) => setSeedDemo(e.currentTarget.checked)}
+              disabled={submitting}
+              className="mt-1"
+            />
+            <span className="font-medium">
+              {t("forge.form.seedDemoLabel")}
+            </span>
+          </label>
+          <p className="text-xs text-muted-foreground pl-6">
+            {t("forge.form.seedDemoHint")}
+          </p>
+          <p className="text-xs text-muted-foreground pl-6">
+            {t("forge.form.seedDemoDefault")}
+          </p>
         </CardContent>
       </Card>
 
