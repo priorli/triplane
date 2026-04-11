@@ -35,6 +35,25 @@ const sessionDiscardSchema = z
   })
   .openapi("ForgeSessionDiscard");
 
+const sessionResumeSchema = z
+  .object({
+    sessionId: z.string(),
+    status: z.string(),
+    resumed: z.boolean(),
+  })
+  .openapi("ForgeSessionResume");
+
+const sessionRetrySchema = z
+  .object({
+    sessionId: z.string(),
+    status: z.string(),
+    worktreePath: z.string(),
+    eventsUrl: z.string(),
+    createdAt: z.string(),
+    retriedFrom: z.string(),
+  })
+  .openapi("ForgeSessionRetry");
+
 const ideateExtractResponseData = z
   .union([
     z.object({
@@ -174,6 +193,83 @@ registry.registerPath({
     },
     500: {
       description: "Worktree removal failed",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/v1/forge/sessions/{id}/resume",
+  tags: ["Forge"],
+  summary: "Resume a failed forge session in its existing worktree",
+  description:
+    "Spawns `claude -c` via the CLI runner with a continuation prompt — the prior " +
+    "conversation state is loaded from the CLI's on-disk session history. CLI-only " +
+    "(requires `FORGE_USE_SDK` unset). Session status must be `failed` and the " +
+    "worktree must still exist on disk.",
+  security: [{ ClerkAuth: [] }],
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    202: {
+      description: "Resume started",
+      content: {
+        "application/json": {
+          schema: dataResponse(sessionResumeSchema, "ForgeSessionResumeResponse"),
+        },
+      },
+    },
+    404: {
+      description: "Session not found",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+    409: {
+      description: "Session not in a resumable state",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+    410: {
+      description: "Worktree already removed — use /retry instead",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+    501: {
+      description: "Resume not supported on the SDK path (FORGE_USE_SDK=1)",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/v1/forge/sessions/{id}/retry",
+  tags: ["Forge"],
+  summary: "Retry a forge session with a fresh worktree",
+  description:
+    "Clones the original session's form inputs into a new session with a fresh " +
+    "git worktree, starts the full `/init-app` flow from scratch, and tears down " +
+    "the old session + worktree. Unlike /resume (which continues the CLI " +
+    "conversation in place), /retry is a full do-over. Only allowed on terminal " +
+    "statuses (failed / ready / discarded).",
+  security: [{ ClerkAuth: [] }],
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    201: {
+      description: "Retry started — new session created",
+      content: {
+        "application/json": {
+          schema: dataResponse(sessionRetrySchema, "ForgeSessionRetryResponse"),
+        },
+      },
+    },
+    404: {
+      description: "Original session not found",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+    409: {
+      description: "Session is still running — abort it first",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+    500: {
+      description: "Worktree creation or IDEA.md write failed",
       content: { "application/json": { schema: errorResponseSchema } },
     },
   },

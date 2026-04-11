@@ -280,3 +280,131 @@ export function startWorker(args: StartWorkerArgs): AbortController {
 
   return abortController;
 }
+
+export interface StartResumeWorkerArgs {
+  sessionId: string;
+  worktreePath: string;
+}
+
+/**
+ * Builds the continuation prompt for a resumed run. The CLI's `-c` flag
+ * loads the prior conversation context (all prior assistant turns, tool
+ * calls, and tool results) from disk; the prompt below is appended as the
+ * next user message. The agent therefore already "knows" where it was when
+ * it got killed — this prompt just unblocks it and tells it the CLI
+ * limitation that caused the failure has been lifted.
+ */
+function buildResumePrompt(): string {
+  return [
+    "You hit an error mid-run earlier while executing `/init-app` in this",
+    "worktree (likely `error_max_budget_usd` because the forge CLI runner",
+    "used to pass `--max-budget-usd 3`; that flag has since been removed).",
+    "",
+    "Please continue from exactly where you stopped:",
+    "",
+    "1. First run `git status` and `git diff --stat` to see which files you",
+    "   already modified before the cap hit. This is ground truth for what's",
+    "   done.",
+    "2. Read any specs you already drafted under `specs/features/` to confirm",
+    "   which `/feature add` loop iteration you were on, if any.",
+    "3. Pick up from whichever `/init-app` step was in progress. Do NOT redo",
+    "   work that's already in the working tree — if `design/tokens.json`",
+    "   already has the brand color, if Kotlin packages have been renamed,",
+    "   if display strings are already rewritten, skip those steps and move",
+    "   to the next.",
+    "4. Run through the remaining steps to completion: Step 6 (`git status`",
+    "   + `git diff --stat` preview), Step 7 (build verification — web +",
+    "   Android + iOS in parallel), Step 8 (`/feature add` loop for any",
+    "   backlog items you haven't drafted yet), Step 9 (final report).",
+    "",
+    "Do NOT re-run `bin/init.sh` or `rewrite-docs.sh` if their effects are",
+    "already visible in `git status`. Do NOT `git commit` or `git reset` —",
+    "the forge user will review the diff after you finish.",
+    "",
+    "Start by running `git status` and telling me what you find.",
+  ].join("\n");
+}
+
+/**
+ * Resumes a previously-failed forge session by running `claude -c` inside
+ * the existing worktree with a continuation prompt. The prior conversation
+ * state is loaded from disk by the CLI (from `~/.claude/projects/<cwd>/*.jsonl`).
+ *
+ * Fire-and-forget — returns the abort controller so the /resume route can
+ * wire it up for mid-run aborts, same shape as `startWorker()`.
+ *
+ * CLI-only: this function requires `FORGE_USE_SDK` to be unset (or explicitly
+ * "0") because the SDK runner throws on `resume: true`. The /resume route
+ * validates this condition before calling here.
+ */
+export function startResumeWorker(args: StartResumeWorkerArgs): AbortController {
+  const abortController = new AbortController();
+  sessionStore.setAbortController(args.sessionId, abortController);
+  sessionStore.setStatus(args.sessionId, "bootstrapping");
+
+  // Resume uses the same onApproval pattern as startWorker — approvals only
+  // fire on the SDK path (which throws on resume), so in practice this is
+  // dead code during resume. Kept for parity with the signature runAgent
+  // expects, so a future SDK-based resume slots in without changes.
+  const onApproval = async (req: ApprovalRequest): Promise<ApprovalDecision> => {
+    const approvalId = randomUUID();
+    const decision = await new Promise<{ approved: boolean; note?: string }>((resolve) => {
+      sessionStore.registerApproval(args.sessionId, {
+        approvalId,
+        title: req.title ?? req.displayName ?? `Run ${req.toolName}`,
+        body: req.decisionReason ?? JSON.stringify(req.input, null, 2),
+        resolve,
+      });
+      sessionStore.appendEvent(args.sessionId, "approval_request", {
+        approvalId,
+        toolName: req.toolName,
+        title: req.title,
+        displayName: req.displayName,
+        input: req.input,
+        blockedPath: req.blockedPath,
+        decisionReason: req.decisionReason,
+      });
+      sessionStore.setStatus(args.sessionId, "awaiting_approval");
+    });
+    sessionStore.setStatus(args.sessionId, "bootstrapping");
+    return decision.approved
+      ? { behavior: "allow" }
+      : {
+          behavior: "deny",
+          message:
+            decision.note && decision.note.length > 0
+              ? `Rejected by user: ${decision.note}`
+              : "Rejected by user via forge approval gate.",
+        };
+  };
+
+  void (async () => {
+    try {
+      const result = await runAgent({
+        cwd: args.worktreePath,
+        prompt: buildResumePrompt(),
+        sessionId: args.sessionId,
+        abortController,
+        onApproval,
+        permissionMode: "default",
+        resume: true,
+      });
+
+      if (result.completed) {
+        sessionStore.setStatus(args.sessionId, "ready");
+      } else {
+        sessionStore.fail(
+          args.sessionId,
+          result.errorMessage ?? "Resume did not complete",
+        );
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      sessionStore.fail(args.sessionId, message);
+    } finally {
+      sessionStore.setAbortController(args.sessionId, null);
+    }
+  })();
+
+  return abortController;
+}

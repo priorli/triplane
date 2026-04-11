@@ -169,8 +169,8 @@ export function QuickForm() {
                   value={prompt}
                   onChange={(e) => setPrompt(e.currentTarget.value)}
                   placeholder={t("forge.quick.promptPlaceholder")}
-                  className="w-full min-h-[10rem] rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  maxLength={4000}
+                  className="w-full min-h-[24rem] rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
+                  maxLength={50000}
                   disabled={busyStage !== null}
                 />
                 <p className="text-xs text-muted-foreground">

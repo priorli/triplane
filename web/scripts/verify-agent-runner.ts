@@ -13,7 +13,11 @@
 // report the failure but NOT delete the worktree (so you can poke at it).
 
 import { createWorktree, removeWorktree } from "../src/lib/forge/worktree";
-import { runAgent } from "../src/lib/forge/agent-runner";
+// Smoke test targets the SDK runner directly so the SDKMessage typing in
+// this file stays concrete. `agent-runner.ts` is a router whose OnMessage
+// type is `unknown` to accommodate the CLI path — the test is specifically
+// exercising the SDK path, not the router.
+import { runAgentViaSdk as runAgent } from "../src/lib/forge/sdk-runner";
 import { sessionStore } from "../src/lib/forge/session-store";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
@@ -54,7 +58,11 @@ async function main() {
   const assistantTurns: number[] = [];
 
   let messageCount = 0;
-  const onMessage = (msg: SDKMessage) => {
+  // OnMessage is typed as `(msg: unknown) => void` at the router level to
+  // support the CLI runner (which produces raw stream-json). Cast to
+  // SDKMessage inside the body since we're targeting the SDK runner.
+  const onMessage = (rawMsg: unknown) => {
+    const msg = rawMsg as SDKMessage;
     messageCount++;
     if (msg.type === "assistant") {
       const asst = msg as {

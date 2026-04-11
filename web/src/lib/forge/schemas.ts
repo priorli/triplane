@@ -51,7 +51,7 @@ export const approvalDecisionSchema = z.object({
 export type ApprovalDecision = z.infer<typeof approvalDecisionSchema>;
 
 export const ideateExtractRequestSchema = z.object({
-  prompt: z.string().min(1).max(4000),
+  prompt: z.string().min(1).max(50000),
   answers: z
     .array(
       z.object({

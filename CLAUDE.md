@@ -52,6 +52,7 @@ The full numbered list (with rationale) is in `PLAN.md` § Architecture principl
 - Deploy: `fly deploy` from repo root (fly.toml is at root, Dockerfile refs `web/` paths)
 - Docker build context is the repo root; `.dockerignore` excludes `mobile/` and `specs/`
 - See `web/AGENTS.md` for additional Next.js-specific rules (when present)
+- **Forge runner auth (forge branch only):** forge runs shell out to the local `claude` CLI by default, using your Claude Code subscription (no API credits burned). Set `FORGE_USE_SDK=1` to fall back to `@anthropic-ai/claude-agent-sdk` with `ANTHROPIC_API_KEY` — that path preserves per-tool browser approvals via `canUseTool`; the CLI path runs with `--permission-mode bypassPermissions` because Claude Code 2.1.101 has no `--permission-prompt-tool` flag.
 
 ## Mobile app (`mobile/`)
 

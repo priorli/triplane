@@ -36,7 +36,9 @@ export function SessionProgress({
   const [streamError, setStreamError] = useState<string | null>(null);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(null);
-  const [actionBusy, setActionBusy] = useState<null | "abort" | "discard" | "copy">(null);
+  const [actionBusy, setActionBusy] = useState<
+    null | "abort" | "discard" | "copy" | "resume" | "retry"
+  >(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const approvalInFlight = useRef<Set<string>>(new Set());
 
@@ -214,6 +216,60 @@ export function SessionProgress({
     }
   }
 
+  async function handleResume() {
+    if (actionBusy) return;
+    setActionBusy("resume");
+    setActionNotice(null);
+    try {
+      const res = await fetch(`/api/v1/forge/sessions/${sessionId}/resume`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+      }
+      // Status will transition via SSE (bootstrapping → ready | failed).
+      setStatus("bootstrapping");
+      setActionNotice("Resuming session — streaming from where it stopped…");
+    } catch (e) {
+      setStreamError(e instanceof Error ? e.message : "resume failed");
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  async function handleRetry() {
+    if (actionBusy) return;
+    if (
+      !confirm(
+        "Retry this session? The current worktree will be deleted and a fresh /init-app run will start with the same form inputs.",
+      )
+    ) {
+      return;
+    }
+    setActionBusy("retry");
+    setActionNotice(null);
+    try {
+      const res = await fetch(`/api/v1/forge/sessions/${sessionId}/retry`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error?.message ?? `HTTP ${res.status}`);
+      }
+      const body = await res.json();
+      const newSessionId = body?.data?.sessionId as string | undefined;
+      if (!newSessionId) {
+        throw new Error("retry response missing sessionId");
+      }
+      setActionNotice("Retrying — redirecting to the new session…");
+      setTimeout(() => router.push(`/forge/sessions/${newSessionId}`), 500);
+    } catch (e) {
+      setStreamError(e instanceof Error ? e.message : "retry failed");
+      setActionBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -265,6 +321,36 @@ export function SessionProgress({
                 disabled={actionBusy !== null}
               >
                 {actionBusy === "abort" ? "Aborting…" : "Abort"}
+              </Button>
+            )}
+            {status === "failed" && (
+              <>
+                <Button
+                  variant="default"
+                  onClick={handleResume}
+                  disabled={actionBusy !== null}
+                  title="Continue from where the CLI stopped, using the existing worktree (claude -c)"
+                >
+                  {actionBusy === "resume" ? "Resuming…" : "Resume"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleRetry}
+                  disabled={actionBusy !== null}
+                  title="Start over with a fresh worktree, using the same form inputs"
+                >
+                  {actionBusy === "retry" ? "Retrying…" : "Retry"}
+                </Button>
+              </>
+            )}
+            {status === "ready" && (
+              <Button
+                variant="outline"
+                onClick={handleRetry}
+                disabled={actionBusy !== null}
+                title="Start over with a fresh worktree, using the same form inputs"
+              >
+                {actionBusy === "retry" ? "Retrying…" : "Retry"}
               </Button>
             )}
             {status !== "discarded" && (
