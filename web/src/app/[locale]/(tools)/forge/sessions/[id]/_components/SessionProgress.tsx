@@ -58,8 +58,19 @@ export function SessionProgress({
     };
 
     const handleEvent = (e: MessageEvent) => {
+      // Defensive: SSE can occasionally dispatch a frame where `e.data` is
+      // undefined, empty, or the literal string "undefined" — usually from
+      // dev-server HMR racing with a partial stream, an onmessage fallback
+      // firing on a malformed frame, or a transport edge case on reconnect.
+      // Silently ignore those instead of blowing up the stream with a
+      // "'undefined' is not valid JSON" error that masks whatever real event
+      // came next.
+      const raw = e.data;
+      if (typeof raw !== "string" || !raw || raw === "undefined") {
+        return;
+      }
       try {
-        const event = JSON.parse(e.data) as ForgeEvent;
+        const event = JSON.parse(raw) as ForgeEvent;
         setEvents((prev) => [...prev, event]);
 
         if (event.type === "status" && typeof event.payload.status === "string") {
@@ -94,7 +105,14 @@ export function SessionProgress({
           setConnected(false);
         }
       } catch (err) {
-        setStreamError(err instanceof Error ? err.message : "parse error");
+        // Include a short slice of the raw payload in the error so the next
+        // occurrence is diagnosable without guessing.
+        const detail = raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
+        setStreamError(
+          err instanceof Error
+            ? `${err.message} — raw: ${detail}`
+            : `parse error — raw: ${detail}`,
+        );
       }
     };
 

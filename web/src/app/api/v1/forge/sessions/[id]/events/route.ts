@@ -24,13 +24,47 @@ export async function GET(request: Request, { params }: RouteContext) {
   const { id: sessionId } = await params;
   const session = sessionStore.get(sessionId);
   if (!session) {
-    return new Response(
-      JSON.stringify({ error: { code: "NOT_FOUND", message: "session not found" } }),
-      {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      },
+    // Return a valid SSE stream with a single error + done event, not a
+    // bare 404 JSON body. EventSource can't parse a JSON error response —
+    // it'd fire onerror and keep reconnecting, which is noise. A one-shot
+    // SSE error frame lets the client surface a clear message and stop.
+    // This also covers the dev-server HMR case where the in-memory store
+    // gets rolled between POST /sessions and the page load.
+    const encoder = new TextEncoder();
+    const body = encoder.encode(
+      [
+        "id: 0",
+        "event: error",
+        `data: ${JSON.stringify({
+          id: 0,
+          sessionId,
+          type: "error",
+          timestamp: new Date().toISOString(),
+          payload: {
+            message:
+              "Session not found in the in-memory store. This usually means the dev server hot-reloaded between creating the session and loading this page. Start a fresh session from /forge/new.",
+          },
+        })}`,
+        "",
+        "id: 1",
+        "event: done",
+        `data: ${JSON.stringify({
+          id: 1,
+          sessionId,
+          type: "done",
+          timestamp: new Date().toISOString(),
+          payload: { completed: false },
+        })}`,
+        "",
+        "",
+      ].join("\n"),
     );
+    return new Response(body, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+      },
+    });
   }
 
   const lastEventIdHeader = request.headers.get("Last-Event-ID");
