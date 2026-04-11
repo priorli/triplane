@@ -194,6 +194,34 @@ When adopting Clerk, the first build failed even after the dependency was added 
 - `/upgrade-deps` skill includes `--rerun-tasks` as a fallback step.
 - CLAUDE.md mentions the cache-flush command as a known recovery step.
 
+### Pain: Kotlin/Native ObjC exporter crashes on certain composeApp public types
+
+**What happened:** Phase 7 (iOS auth) hit `java.lang.ClassCastException: IrExternalPackageFragmentImpl cannot be cast to IrClass` inside `ObjCExportCodeGeneratorKt.createConstructorAdapter` every time the `linkDebugFrameworkIosSimulatorArm64` task ran. Bisect narrowed the trigger to Phase 4's `composeApp/feature/items/*` code combined with shared-domain types crossing the module boundary. Upgrading Kotlin 2.3.10 → 2.3.20 stable did **not** fix the crash. `@HiddenFromObjC` on `ItemDetailViewModel`/`PickedPhoto` did not fix it either.
+
+**Root cause:** A Kotlin/Native 2.3.x ObjC-export bug that trips on some public type shapes when they're reachable through the composeApp framework's public API surface. Not specific to one class — narrowing further would have required more bisecting than the session budget allowed.
+
+**Triplane prevents this with:**
+- **Workaround**: every `composeApp/feature/<name>/*` type is marked `internal`. Internal visibility excludes the type from the ObjC export surface, so the buggy exporter never touches it. Compose + Koin still work because `internal` is same-module-accessible.
+- **Rule**: Swift-facing bridge types (e.g. `feature/auth/ClerkAuthBridge.kt` — the protocol + holder + SAM callbacks) stay `public`. Everything else in composeApp feature folders stays `internal`.
+- Documented in CLAUDE.md § Common gotchas so future feature work defaults to `internal` from the start.
+- The link-not-compile verification rule (see the § "Build verification practices" callout above) ensures future exporter crashes surface at PR time, not three phases later.
+
+### Pain: Research agents hallucinated API shapes for a new library
+
+**What happened:** Phase 7 used an Explore subagent to research Clerk iOS SDK. The agent reported `Clerk.shared.configure(publishableKey:)` and `try await Clerk.shared.session?.getToken()?.jwt` and `try await Clerk.shared.signOut()`. All three were wrong:
+
+1. `configure` is a static method on `Clerk`, not an instance method — correct: `Clerk.configure(publishableKey:)`
+2. `.getToken()` returns `String?` directly, no `.jwt` wrapper — correct: `Clerk.shared.auth.getToken()`
+3. Sign out lives on `auth`, not `Clerk` — correct: `Clerk.shared.auth.signOut()`
+
+The Swift code compiled against the agent's API shapes failed with four distinct errors. We fixed them by reading the actual `Clerk.swift` source from the SPM checkout in Xcode DerivedData.
+
+**Root cause:** Even "verified research" from an LLM-powered agent can be wrong in ways that look plausible. Subagents don't run the code they describe.
+
+**Triplane prevents this with:**
+- New rule in § Library research patterns: **after adopting a library, read the source or let the compiler tell you**. Research agents are OK for "does it exist" and "which package" questions; they are not OK for API shape details. Trust only what compiles.
+- The `/upgrade-deps` skill documents this: "Library docs lie. Research agents hallucinate. Source compiles."
+
 ---
 
 ## The auth saga
@@ -328,6 +356,7 @@ When integrating a new library:
 4. **Check the example app.** Most well-maintained libraries have a `sample/` or `example/` directory showing real usage.
 5. **Capture API discoveries in PLAN.md decisions log.** The next session shouldn't have to re-research what `IosMarkerOptions.tintColor` does.
 6. **Verify version compatibility before adoption.** If the library forces a Kotlin/CMP/AGP cascade, capture all the new pinned versions in `libs.versions.toml` and the decisions log.
+7. **Research agents hallucinate API shapes.** Subagent-produced research is fine for "does this library exist" and "which package" questions but untrustworthy for exact function signatures, return types, and method chaining. Phase 7's Clerk iOS research got three separate API shapes wrong (`Clerk.shared.configure` vs `Clerk.configure`, `.getToken()?.jwt` vs `.getToken()` returning `String?`, `Clerk.shared.signOut()` vs `Clerk.shared.auth.signOut()`). Fix: once SPM / Gradle has resolved the library, read the actual `.swift` / `.kt` source out of the local cache (Xcode DerivedData, `~/.gradle/caches/`). The compiler is the ultimate source of truth — if it compiles, the API shape is right.
 
 The `/upgrade-deps` skill (Phase 5) automates much of this.
 
@@ -344,13 +373,22 @@ cd web && bun run build
 # Mobile — Android
 cd mobile && ./gradlew :composeApp:assembleDebug
 
-# Mobile — iOS (catches String.format and other JVM-isms)
-cd mobile && ./gradlew :composeApp:compileKotlinIosSimulatorArm64
+# Mobile — iOS framework link (NOT compile — see callout below)
+cd mobile && ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
 ```
 
-The iOS compile is the one that catches subtle issues that Android ignores. **Always run it before declaring a feature done.**
+The iOS framework link is the task that catches the subtle issues Android ignores AND the ObjC exporter crashes that source-level compile silently skips. **Always run the link, not the compile, before declaring a feature done.**
 
-The `/release-check` skill (Phase 5) bundles all three into one command.
+### Why `link`, not `compile` — the verification gap we hit
+
+Phase 4 shipped with `:composeApp:compileKotlinIosSimulatorArm64` as the documented iOS verification target. It worked: compile was green across every Phase 4 change. Then Phase 7 tried to build the actual iOS framework and discovered a Kotlin/Native ObjC-exporter crash — `java.lang.ClassCastException: IrExternalPackageFragmentImpl cannot be cast to IrClass` inside `createConstructorAdapter` — triggered by Phase 4 composeApp public types. The crash had been sitting in the repo for three phases, undetected.
+
+**Root cause:** `compileKotlinIosSimulatorArm64` only performs **source-level compilation** to klib. It does not run the ObjC header exporter. `linkDebugFrameworkIosSimulatorArm64` performs the full framework build — compile + link + ObjC export — and is where exporter crashes surface. Picking the compile task as the verification bar meant the exporter was never exercised outside a real iOS build.
+
+**Triplane prevents this with:**
+- `linkDebugFrameworkIosSimulatorArm64` as the documented iOS verification target in CLAUDE.md, `/release-check` skill, and `.github/workflows/ci.yml` — all three places that used to say `compile` now say `link`.
+- Explicit anti-pattern callout in CLAUDE.md § Common gotchas.
+- The `/release-check` skill bundles all three (web build + Android assembleDebug + iOS framework link) into one command.
 
 ---
 
@@ -364,6 +402,7 @@ What works:
 4. **Verify, don't trust.** Always grep the actual code rather than trusting checkboxes or memory.
 5. **Capture rationale, not just changes.** Add a decisions log entry when the *why* is non-obvious.
 6. **Phase numbering for resumability.** Phases survive context compaction; ad-hoc todo lists don't.
+7. **Pressure-test architectural decisions with a Plan subagent before executing.** Phase 4's 5-tradeoff review (attachment FK, upload strategy, bucket visibility, repository split, HomeScreen fate) ran through a Plan agent that confirmed 4 defaults and pushed back on 1 — the HomeScreen retention that kept Phase 7's iOS bring-up isolated from Items. One ~10-minute review prevented a coupling that would have cost hours in Phase 7. The cost is cheap; the unlock is real.
 
 What doesn't work:
 
@@ -392,6 +431,9 @@ What doesn't work:
 | **Hard deletes on user content** | "Oops" should be recoverable. Soft delete everything. |
 | **Auth tokens in TokenStorage instead of fresh from Clerk** | Stale tokens cause silent 401s. Always fetch fresh via `Clerk.auth.getToken()`. |
 | **Hardcoded API base URLs** | Use BuildConfig (Android) and per-build environment configuration. |
+| **Using `compileKotlinIosSimulatorArm64` as the iOS verification target** | Compile-only tasks skip the ObjC exporter. Use `linkDebugFrameworkIosSimulatorArm64` — catches everything `compile` catches plus the exporter crashes. Phase 4 hid an ObjC-export regression this way for three phases. |
+| **Public types in `composeApp/feature/<name>/*` that Swift doesn't need** | Triggers a Kotlin/Native ObjC-exporter cast crash on certain type shapes (confirmed on 2.3.10 and 2.3.20). Mark as `internal` — same-module access is enough for Compose and Koin, and `internal` types skip ObjC export entirely. Only the `feature/auth/ClerkAuthBridge.kt` protocol + holder needs to stay `public` for Swift. |
+| **Trusting subagent-produced API shapes for new libraries** | LLM research agents hallucinate method signatures and return types. Fine for "does it exist" and package names; not fine for exact APIs. Read the library source from the local SPM / Gradle cache, or let the compiler reject wrong shapes. |
 
 ---
 
