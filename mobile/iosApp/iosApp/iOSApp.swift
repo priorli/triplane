@@ -9,13 +9,14 @@ struct iOSApp: App {
         let publishableKey = Bundle.main.object(forInfoDictionaryKey: "CLERK_PUBLISHABLE_KEY") as? String ?? ""
         if !publishableKey.isEmpty {
             Clerk.configure(publishableKey: publishableKey)
+            // Install the bridge only when Clerk is configured — otherwise
+            // Clerk.shared.user access inside the bridge asserts in debug builds.
+            // Without the bridge, Kotlin's rememberIsSignedIn() returns false
+            // and AuthScreen.ios.kt renders the "bridge not installed" fallback.
+            ClerkAuthBridgeKt.setClerkAuthBridge(bridge: ClerkAuthBridgeImpl())
         } else {
-            print("[iOSApp] WARNING: CLERK_PUBLISHABLE_KEY not set — Clerk features will not work. Fill it in mobile/iosApp/Configuration/Config.xcconfig.")
+            print("[iOSApp] WARNING: CLERK_PUBLISHABLE_KEY not set. Fill it in mobile/iosApp/Configuration/Config.xcconfig and rebuild. Auth flow is disabled until then.")
         }
-
-        // Install the bridge so Kotlin (Compose) code can call Clerk through us.
-        // This must happen before any Compose content renders.
-        ClerkAuthBridgeKt.setClerkAuthBridge(bridge: ClerkAuthBridgeImpl())
     }
 
     var body: some Scene {

@@ -1,17 +1,25 @@
 # Triplane mobile — local config (gitignored as `local.properties`).
 #
+# This file is read by Gradle for the ANDROID build only. The iOS app does
+# NOT read from here — Xcode reads iOS build config from:
+#
+#   mobile/iosApp/Configuration/Config.xcconfig
+#
+# Fill in `CLERK_PUBLISHABLE_KEY` in BOTH places if you're shipping both
+# platforms. Use the same Clerk app for parity so users sign in once.
+#
 # Copy this file to `local.properties` and fill in real values.
 #
 # Required:
 #   sdk.dir — path to your Android SDK installation
 #
-# Required for Clerk auth (Phase 7+):
-#   CLERK_PUBLISHABLE_KEY — from https://dashboard.clerk.com (use the same Clerk
-#                           app as your web counterpart so users sign in once)
+# Required for Clerk auth on ANDROID:
+#   CLERK_PUBLISHABLE_KEY — from https://dashboard.clerk.com.
+#                           iOS reads its own copy from Config.xcconfig.
 #
-# Required for maps (when you start using kmp-maps):
-#   GOOGLE_MAPS_API_KEY — from Google Cloud Console → Maps SDK for Android
-#                         (Apple Maps on iOS needs no key)
+# Required for maps on Android (when you start using kmp-maps):
+#   GOOGLE_MAPS_API_KEY — from Google Cloud Console → Maps SDK for Android.
+#                         Apple Maps on iOS needs no key.
 
 sdk.dir=/Users/YOUR_USER/Library/Android/sdk
 CLERK_PUBLISHABLE_KEY=pk_test_...
