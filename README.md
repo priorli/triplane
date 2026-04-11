@@ -59,6 +59,65 @@ Versions are pinned in `web/package.json` and `mobile/gradle/libs.versions.toml`
 
 See `PLAN.md` for the full plan, architecture principles, and decisions log.
 
+## Triplane Forge (dev tool, `forge` branch only)
+
+**Triplane Forge** is a browser GUI over the `/ideate` + `/init-app` pipeline. Instead of running Claude Code in a terminal, you fill a form, pick a brand color, click Bootstrap, and watch a real `/init-app` run stream into the browser via SSE — with an in-browser approval dialog for every state-changing tool call. On completion, download the worktree as a tar.gz or open it in-place in your editor.
+
+It lives on a **long-lived `forge` branch** that never merges back to main. Main stays pristine as the template; the forge branch extends it with the meta-app. Downstream consumers who clone from `priorli/triplane` via `--template` get zero forge code.
+
+**Prereqs**
+
+- `ANTHROPIC_API_KEY` exported (or run `claude login` if you use the Claude subscription)
+- git ≥ 2.20 (any modern git; `git worktree add` is needed)
+- bun ≥ 1.1 (same as the rest of the template)
+- macOS or Linux (`tar` + `jq` must be on `PATH` — standard on both)
+
+**Run it locally**
+
+```bash
+git checkout forge
+cd web
+bun install           # pulls @anthropic-ai/claude-agent-sdk
+bun run dev
+# open http://localhost:3000/en-US/forge/new
+```
+
+The `/forge` routes do NOT require a Clerk sign-in in dev mode — `requireForgeUser()` returns a fixed `local-dev` identity so you can bootstrap projects without auth friction.
+
+**Form fields**
+
+| Field | What it is |
+|---|---|
+| Product name | The app you're bootstrapping (e.g. "Recipe Share") |
+| Tagline | One-line pitch — goes into IDEA.md and the rewritten README |
+| Description | 3–5 sentences: who it's for, what problem it solves, how |
+| Target user | One sentence describing the primary persona |
+| Features (1–7) | Name + one-line description per row. These become the MVP feature backlog and drive the `/feature add` loop at the end of `/init-app` |
+| Slug / namespace / display name | Auto-derived from product name, overrideable |
+| Brand color (optional) | OKLch (L, C, h) sliders. If set, the forge passes `--brand-color L,C,h` to `rewrite-docs.sh`, which regenerates `design/tokens.json` + `web/src/app/generated/tokens.css` + `mobile/.../DesignTokens.kt` with the new palette |
+
+**What happens under the hood**
+
+1. `POST /api/v1/forge/sessions` creates a git worktree at `$TMPDIR/triplane-forge/<sessionId>` on a fresh `forge-session-<id>` branch (so `/init-app`'s branch safety guard passes)
+2. `IDEA.md` is written to the worktree root with frontmatter (suggested_slug + features) + prose
+3. A worker spawns `@anthropic-ai/claude-agent-sdk`'s `query()` with `cwd=<worktree>` + `settingSources: ['project']` (native `.claude/skills/*` discovery) + the `claude_code` tool preset
+4. The agent runs `/init-app` step by step: pre-flight → `bin/init.sh` → `rewrite-docs.sh [--brand-color]` → git diff review → parallel web+Android+iOS builds → `/feature add` loop → final report
+5. Every Bash/Write/Edit tool call routes through `canUseTool` and shows an approval dialog in the browser. Safe reads (Read/Glob/Grep) auto-approve
+6. On completion: status → `ready`. Click **Download tar.gz** or **Copy `code <path>`** to continue working, or **Discard** to clean up the worktree + branch
+
+**Expected cost**
+
+~$1–3 in Claude API spend per full run (Opus 4.6, ~60–80 turns across `/init-app` + the `/feature add` loop). Prompt caching is enabled so re-runs within 5 minutes pay only the delta.
+
+**Scope**
+
+- Localhost single-user v1. No hosted SaaS, no session persistence, no queue.
+- Form-first flow only. Chat-style `/ideate` proxy is deferred to v2.
+- No GitHub push integration — download the tar.gz and `gh repo create` yourself.
+- No mobile UI for the forge itself (it's a dev tool, not a product).
+
+See `PLAN.md` § Phase 9 and the 2026-04-11 decisions log entry for the full architectural rationale.
+
 ## Getting started
 
 ### 1. Create your repo from the template

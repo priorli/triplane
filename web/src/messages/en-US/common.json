@@ -81,6 +81,70 @@
     "sampleDialogOpen": "Open dialog",
     "sampleDialogClose": "Close"
   },
+  "forge": {
+    "brandName": "Triplane Forge",
+    "devModeLabel": "Local dev mode",
+    "new": {
+      "title": "Forge a new project",
+      "subtitle": "Describe your idea, pick a brand color, and let the Triplane skills bootstrap a full-stack app (web + Android + iOS) in a temporary git worktree.",
+      "switchToQuick": "Just want to type one paragraph? Try quick mode →"
+    },
+    "quick": {
+      "title": "Quick mode",
+      "subtitle": "Type one paragraph describing your idea. The forge extracts the fields for you and asks only what it can't infer.",
+      "switchToFullForm": "← Prefer to fill the full form yourself",
+      "promptCardTitle": "Describe your idea",
+      "promptLabel": "Your idea in plain language",
+      "promptPlaceholder": "A recipe-sharing app for home cooks 25–45 who already text recipes to friends. Let them snap photos, tag by meal type, and share to small private groups…",
+      "promptHint": "3–5 sentences usually gives the extractor enough to skip follow-up questions.",
+      "submit": "Extract fields",
+      "submitting": "Asking Claude…",
+      "questionsCardTitle": "A few quick questions",
+      "continue": "Continue",
+      "startOver": "Start over",
+      "proposedCardTitle": "Here's what I extracted",
+      "proposedBody": "Review the draft. If it looks right, click Bootstrap to create the worktree and start /init-app.",
+      "bootstrap": "Bootstrap project",
+      "bootstrapping": "Creating worktree…"
+    },
+    "form": {
+      "ideaSection": "Your idea",
+      "productName": "Product name",
+      "productNamePlaceholder": "Recipe Share",
+      "tagline": "Tagline",
+      "taglinePlaceholder": "Share recipes with your cooking circle.",
+      "description": "Description",
+      "descriptionPlaceholder": "One paragraph: who it's for, what problem it solves, how. 3–5 sentences.",
+      "targetUser": "Target user",
+      "targetUserPlaceholder": "Home cooks 25–45 who already text recipes to friends.",
+      "featuresSection": "MVP feature backlog",
+      "featuresHint": "1–7 features. Each is something a user can do in the app (not infrastructure like 'authentication').",
+      "featureNamePlaceholder": "Feature name",
+      "featureDescriptionPlaceholder": "One-line description",
+      "addFeature": "Add feature",
+      "removeFeature": "Remove",
+      "identitySection": "Project identity",
+      "identityHint": "Defaults are derived from the product name. Override if you want something different.",
+      "slug": "Slug",
+      "slugPlaceholder": "recipe-share",
+      "namespace": "Java namespace",
+      "namespacePlaceholder": "com.myorg.recipeshare",
+      "displayName": "Display name",
+      "displayNamePlaceholder": "Recipe Share",
+      "brandSection": "Brand color (optional)",
+      "brandEnable": "Pick a brand color for the design system",
+      "submit": "Bootstrap project",
+      "submitting": "Creating worktree…"
+    },
+    "session": {
+      "title": "Forge session",
+      "sessionIdLabel": "Session ID",
+      "placeholderTitle": "Skeleton — awaiting the agent runner",
+      "placeholderBody1": "The worktree was created at the session ID above and IDEA.md was written with your frontmatter + prose body. Check the tmp path in the worktree output.",
+      "placeholderBody2": "The Agent SDK integration lands in sub-phase 9.2 + 9.3 + 9.4. For now this page is a stub.",
+      "placeholderBody3": "To verify: cd /tmp/triplane-forge/<session-id> and cat IDEA.md."
+    }
+  },
   "metadata": {
     "title": "Triplane",
     "description": "Priorli's full-stack monorepo template"

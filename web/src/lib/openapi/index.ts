@@ -5,6 +5,7 @@ import { createGenerator } from "./registry";
 import "./routes/health";
 import "./routes/items";
 import "./routes/attachments";
+import "./routes/forge";
 
 export function generateOpenAPIDocument() {
   const generator = createGenerator();
