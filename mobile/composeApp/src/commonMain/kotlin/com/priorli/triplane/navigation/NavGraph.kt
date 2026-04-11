@@ -10,6 +10,7 @@ import androidx.navigation.toRoute
 import com.priorli.triplane.feature.auth.AuthScreen
 import com.priorli.triplane.feature.auth.rememberIsSignedIn
 import com.priorli.triplane.feature.auth.signOut
+import com.priorli.triplane.feature.design.DesignShowcaseScreen
 import com.priorli.triplane.feature.home.HomeScreen
 import com.priorli.triplane.feature.items.ItemDetailScreen
 import com.priorli.triplane.feature.items.ItemsListScreen
@@ -46,6 +47,7 @@ fun NavGraph() {
         composable<Home> {
             HomeScreen(
                 onNavigateToItems = { navController.navigate(ItemsList) },
+                onNavigateToDesign = { navController.navigate(DesignShowcase) },
                 onSignOut = { scope.launch { signOut() } },
             )
         }
@@ -61,6 +63,9 @@ fun NavGraph() {
                 itemId = route.itemId,
                 onBack = { navController.navigateUp() },
             )
+        }
+        composable<DesignShowcase> {
+            DesignShowcaseScreen(onBack = { navController.navigateUp() })
         }
     }
 }

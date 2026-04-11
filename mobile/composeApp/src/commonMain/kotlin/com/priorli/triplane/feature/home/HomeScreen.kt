@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun HomeScreen(
     onNavigateToItems: () -> Unit,
+    onNavigateToDesign: () -> Unit,
     onSignOut: () -> Unit,
 ) {
     Scaffold(
@@ -61,6 +62,20 @@ fun HomeScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = "Browse the example feature that ships with Triplane — CRUD plus presigned file uploads end-to-end.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Card(modifier = Modifier.fillMaxWidth(), onClick = onNavigateToDesign) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Design showcase",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Every color, type scale, radius, and sample component that ships with Triplane. Flip the device's dark mode to see the palette rotate.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

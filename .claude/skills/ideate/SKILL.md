@@ -47,9 +47,17 @@ Keep each question short. Do not ask multi-part questions. If a user answer rais
 
 ## Step 3 — Draft the brief
 
-Synthesize the answers into this exact structure (markdown):
+Synthesize the answers into this exact structure. `IDEA.md` has **two parts**: a YAML frontmatter block at the top (machine-readable, consumed by `/init-app` and `rewrite-docs.sh`) and a prose body below (human-readable). Both parts must be present.
 
 ```markdown
+---
+suggested_slug: <kebab-case-project-name>
+features:
+  - <feature-slug>
+  - <feature-slug>
+  - <feature-slug>
+---
+
 # <Product Name>
 
 > <One-line tagline>
@@ -60,7 +68,7 @@ Synthesize the answers into this exact structure (markdown):
 
 ## Target user
 
-<1–2 sentences naming the specific user segment, not a generic "everyone."><
+<1–2 sentences naming the specific user segment, not a generic "everyone."
 Include one concrete example persona if it clarifies things.>
 
 ## MVP feature backlog
@@ -89,7 +97,25 @@ Include one concrete example persona if it clarifies things.>
 - <examples: "monetization TBD", "do we need offline support?", "which map provider?">
 ```
 
-If any section has no content, include it with `_(none yet)_` so the structure is preserved for later editing.
+### Frontmatter schema
+
+Keep frontmatter minimal — only fields that downstream tooling can't extract reliably from prose:
+
+| Field | Required | Shape | Purpose |
+|---|---|---|---|
+| `suggested_slug` | yes | kebab-case string | Default for `/init-app`'s Project slug prompt. Derived from the product name (e.g., "Recipe Share" → `recipe-share`). User can override at init time. |
+| `features` | yes | YAML list of kebab-case strings | Feeds `rewrite-docs.sh --features` and drives the `/feature add` loop. **Each slug should map to one item in the prose backlog below.** |
+
+Everything else (tagline, description, product name) stays in the prose body and is parsed from there by `rewrite-docs.sh` via awk. Do NOT duplicate tagline/description in frontmatter — redundancy creates drift.
+
+### Deriving slugs
+
+- **`suggested_slug`:** lowercase the product name, replace spaces with hyphens, strip punctuation. "Recipe Share" → `recipe-share`. "My Awesome App" → `my-awesome-app`.
+- **Feature slugs:** take the feature name from the backlog, lowercase it, kebab-case. "Recipes" → `recipes`. "Photo Upload" → `photo-upload`. If the backlog name is a sentence like "Follow/unfollow other users" → shorten to `follows`.
+
+If the user has strong opinions on a particular slug, honor them. Otherwise use the defaults above.
+
+If any prose section has no content, include it with `_(none yet)_` so the structure is preserved for later editing.
 
 ## Step 4 — Present and approve
 

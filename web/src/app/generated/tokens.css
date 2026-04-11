@@ -1,0 +1,109 @@
+/* GENERATED FILE — DO NOT EDIT BY HAND.
+ * Source:   design/tokens.json
+ * Generator: bin/design-tokens.sh
+ *
+ * To change tokens: edit design/tokens.json, then run ./bin/design-tokens.sh
+ * and commit both files.
+ *
+ * globals.css imports this file AFTER its own @import "tailwindcss", so we
+ * don't re-import Tailwind here.
+ */
+
+@theme inline {
+  /* Colors — light mode (via :root; .dark overrides below) */
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* shadcn aliases so existing components (Button, Card, etc.) keep working
+   * with their semantic class names (bg-primary, text-primary-foreground, …). */
+  --color-primary: var(--brand);
+  --color-primary-foreground: var(--brand-foreground);
+  --color-secondary: var(--muted);
+  --color-secondary-foreground: var(--muted-foreground);
+  --color-accent: var(--muted);
+  --color-accent-foreground: var(--muted-foreground);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--card-foreground);
+  --color-input: var(--border);
+  --color-ring: var(--brand);
+
+  /* Font families — reference CSS variables set up by next/font/google in
+   * web/src/app/[locale]/layout.tsx. To change the font, edit both the
+   * layout.tsx next/font loader AND tokens.json (the font-family name must
+   * match so the generated variable name matches the layout's setup).
+   */
+  --font-sans: var(--font-nunito);
+  --font-mono: var(--font-geist-mono);
+
+  --text-bodyLarge: 16px;
+  --text-bodyLarge--line-height: 24px;
+  --text-bodyLarge--font-weight: 400;
+  --text-bodyMedium: 14px;
+  --text-bodyMedium--line-height: 20px;
+  --text-bodyMedium--font-weight: 400;
+  --text-displayLarge: 57px;
+  --text-displayLarge--line-height: 64px;
+  --text-displayLarge--font-weight: 400;
+  --text-headlineLarge: 32px;
+  --text-headlineLarge--line-height: 40px;
+  --text-headlineLarge--font-weight: 400;
+  --text-labelMedium: 12px;
+  --text-labelMedium--line-height: 16px;
+  --text-labelMedium--font-weight: 500;
+  --text-titleLarge: 22px;
+  --text-titleLarge--line-height: 28px;
+  --text-titleLarge--font-weight: 500;
+
+  /* Radius scale */
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius-sm: 4px;
+  --radius-xl: 16px;
+
+  /* Spacing scale (additions to Tailwind's built-in spacing) */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+}
+
+/* Light-mode color values */
+:root {
+  --brand: oklch(0.205 0.0 0.0);
+  --brand-foreground: oklch(0.985 0 0);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --border: oklch(0.922 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+}
+
+/* Dark-mode color values */
+.dark {
+  --brand: oklch(0.9700 0.0 0.0);
+  --brand-foreground: oklch(0.145 0 0);
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --border: oklch(0.269 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+}

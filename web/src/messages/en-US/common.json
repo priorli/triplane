@@ -4,7 +4,8 @@
     "signIn": "Sign in",
     "signOut": "Sign out",
     "home": "Home",
-    "items": "Items"
+    "items": "Items",
+    "design": "Design"
   },
   "buttons": {
     "save": "Save",
@@ -64,6 +65,21 @@
       "deleteFailed": "Could not delete item.",
       "uploadFailed": "Photo upload failed."
     }
+  },
+  "design": {
+    "title": "Design system",
+    "subtitle": "Every token, type scale, radius, and sample component that ships with Triplane. Flip the theme toggle to see the palette rotate.",
+    "colorsHeading": "Colors",
+    "typographyHeading": "Typography",
+    "radiusHeading": "Radii",
+    "componentsHeading": "Sample components",
+    "sampleButtonDefault": "Primary button",
+    "sampleButtonDestructive": "Destructive",
+    "sampleInputPlaceholder": "Sample input",
+    "sampleDialogTitle": "Sample dialog",
+    "sampleDialogBody": "Dialog consumes design-system tokens via shadcn.",
+    "sampleDialogOpen": "Open dialog",
+    "sampleDialogClose": "Close"
   },
   "metadata": {
     "title": "Triplane",

@@ -13,3 +13,6 @@ object ItemsList
 
 @Serializable
 data class ItemDetail(val itemId: String)
+
+@Serializable
+object DesignShowcase

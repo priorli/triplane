@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import { Link } from "@/i18n/navigation";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function AppLayout({
   children,
@@ -29,9 +30,13 @@ export default async function AppLayout({
               <Link href="/items" className="hover:text-foreground">
                 {t("nav.items")}
               </Link>
+              <Link href="/design" className="hover:text-foreground">
+                {t("nav.design")}
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <UserButton />
           </div>
         </div>

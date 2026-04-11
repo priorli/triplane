@@ -61,6 +61,7 @@ IDEA_FILE="IDEA.md"
 DESCRIPTION=""
 TAGLINE=""
 FEATURES_CSV=""
+BRAND_COLOR=""
 DRY_RUN="false"
 ASSUME_YES="false"
 
@@ -80,6 +81,10 @@ Options:
   --description <string>     One-paragraph description (else pulled from IDEA.md Description section, else placeholder)
   --tagline <string>         One-line tagline (else pulled from IDEA.md blockquote after the title, else placeholder)
   --features <a,b,c>         Comma-separated feature slugs; each becomes an empty-status row in PLAN.md matrix
+  --brand-color <L,C,h>      Optional OKLch brand color (three floats comma-separated, e.g. "0.55,0.20,250").
+                             When passed, the script writes it to design/tokens.json's `brand` field
+                             and runs ./bin/design-tokens.sh to regenerate the web + mobile palettes
+                             (Phase 8 design system). Default: gray (tokens.json unchanged).
   --dry-run                  Print planned edits; do not modify any file
   --yes, -y                  Skip the confirmation prompt
   --help, -h                 Show this help
@@ -87,7 +92,8 @@ Options:
 Example:
   rewrite-docs.sh --display-name "Recipe Share" --slug recipe-share \
                   --tagline "Share recipes with your cooking circle" \
-                  --features "recipes,photos,follows"
+                  --features "recipes,photos,follows" \
+                  --brand-color "0.55,0.20,250"
 EOF
 }
 
@@ -121,6 +127,10 @@ while (( $# > 0 )); do
             FEATURES_CSV="$2"
             shift 2
             ;;
+        --brand-color)
+            BRAND_COLOR="$2"
+            shift 2
+            ;;
         --dry-run)
             DRY_RUN="true"
             shift
@@ -149,6 +159,25 @@ if ! [[ "$SLUG" =~ ^[a-z][a-z0-9-]*$ ]]; then
     echo "Error: --slug must be kebab-case (lowercase letters, digits, hyphens; must start with a letter)." >&2
     echo "       Got: '$SLUG'" >&2
     exit 2
+fi
+
+# Validate brand color if provided — three comma-separated floats (OKLch L,C,h)
+BRAND_L=""
+BRAND_C=""
+BRAND_H=""
+if [[ -n "$BRAND_COLOR" ]]; then
+    if ! [[ "$BRAND_COLOR" =~ ^[0-9]+(\.[0-9]+)?,[0-9]+(\.[0-9]+)?,[0-9]+(\.[0-9]+)?$ ]]; then
+        echo "Error: --brand-color must be three comma-separated floats L,C,h (OKLch)." >&2
+        echo "       Example: --brand-color \"0.55,0.20,250\"" >&2
+        echo "       Got: '$BRAND_COLOR'" >&2
+        exit 2
+    fi
+    IFS=',' read -r BRAND_L BRAND_C BRAND_H <<< "$BRAND_COLOR"
+    # Sanity checks: L must be in [0, 1]; C and h are unconstrained but warn on obvious errors
+    if (( $(echo "$BRAND_L > 1.0" | bc -l) )) || (( $(echo "$BRAND_L < 0.0" | bc -l) )); then
+        echo "Error: --brand-color L (lightness) must be between 0 and 1. Got: $BRAND_L" >&2
+        exit 2
+    fi
 fi
 
 # --- Derived vars ------------------------------------------------------------
@@ -189,7 +218,41 @@ if [[ "$IDEA_FILE" != /* ]]; then
     IDEA_FILE="$REPO_ROOT/$IDEA_FILE"
 fi
 
-# --- Pull tagline + description from IDEA.md if not passed ------------------
+# --- Parse IDEA.md frontmatter + prose sections ------------------------------
+#
+# IDEA.md has two parts:
+#   1. A YAML frontmatter block at the top between --- markers, containing
+#      machine-readable fields (currently: suggested_slug, features).
+#   2. A prose body below with human-readable Description, MVP backlog, etc.
+#
+# Frontmatter is the authoritative source for `features`. Prose is the source
+# for `tagline` and `description` (parsed via awk below).
+
+# Extract features list from the frontmatter block.
+# Prints one feature slug per line. Empty output = no frontmatter or no features key.
+parse_features_from_frontmatter() {
+    local idea_file="$1"
+    [[ -f "$idea_file" ]] || return 0
+    awk '
+        BEGIN { boundary = 0; in_features = 0 }
+        /^---$/ {
+            boundary++
+            if (boundary == 2) exit  # end of frontmatter block
+            next
+        }
+        boundary != 1 { next }
+        /^features:[[:space:]]*$/ { in_features = 1; next }
+        in_features && /^[[:space:]]*-[[:space:]]*/ {
+            slug = $0
+            sub(/^[[:space:]]*-[[:space:]]*/, "", slug)
+            # Strip optional quotes and trailing whitespace
+            gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", slug)
+            if (slug != "") print slug
+            next
+        }
+        in_features && /^[^[:space:]-]/ { in_features = 0 }
+    ' "$idea_file"
+}
 
 if [[ -f "$IDEA_FILE" ]]; then
     if [[ -z "$TAGLINE" ]]; then
@@ -199,6 +262,10 @@ if [[ -f "$IDEA_FILE" ]]; then
     if [[ -z "$DESCRIPTION" ]]; then
         # First non-empty paragraph under "## Description"
         DESCRIPTION="$(awk '/^## Description$/{flag=1; next} flag && NF && !/^#/{print; exit} /^## /{flag=0}' "$IDEA_FILE" || true)"
+    fi
+    if [[ -z "$FEATURES_CSV" ]]; then
+        # Auto-pull from frontmatter if --features wasn't explicitly passed
+        FEATURES_CSV="$(parse_features_from_frontmatter "$IDEA_FILE" | paste -sd, - | tr -d ' ' || true)"
     fi
 fi
 
@@ -218,6 +285,7 @@ echo "  Idea file:      $IDEA_FILE $( [[ -f "$IDEA_FILE" ]] && echo '(found)' ||
 echo "  Tagline:        $TAGLINE"
 echo "  Description:    ${DESCRIPTION:0:80}$( [[ ${#DESCRIPTION} -gt 80 ]] && echo '…' )"
 echo "  Features:       ${FEATURES_CSV:-<none — matrix will be empty>}"
+echo "  Brand color:    ${BRAND_COLOR:-<none — tokens.json stays at default gray>}"
 echo "  Dry run:        $DRY_RUN"
 echo ""
 echo "Will rewrite:"
@@ -228,6 +296,10 @@ echo "  • Kotlin + XML: Theme.kt, App.kt, HomeScreen.kt, AndroidManifest.xml, 
 echo "                  TokenStorage.android.kt, PlatformModule.ios.kt"
 echo "  • Web: en-US i18n JSON, layout.tsx, openapi/index.ts, docs/route.ts,"
 echo "         openapi/responses.ts, types/api.ts"
+if [[ -n "$BRAND_COLOR" ]]; then
+    echo "  • design/tokens.json — set brand = {L: $BRAND_L, C: $BRAND_C, h: $BRAND_H}"
+    echo "  • Re-run ./bin/design-tokens.sh to regenerate web + mobile palettes"
+fi
 echo ""
 echo "Leaves untouched:"
 echo "  • CLAUDE.md, LESSONS.md, .claude/skills/**, specs/**, bin/init.sh"
@@ -627,6 +699,39 @@ for f in "${WEB_META_FILES[@]}"; do
         echo "  [web meta] rewrote Triplane → ${DISPLAY_NAME} in $f"
     fi
 done
+
+# --- Step 5: brand color + design token regeneration (optional) -------------
+
+if [[ -n "$BRAND_COLOR" ]]; then
+    echo ""
+    echo "Step 5/5 — applying brand color to design tokens"
+
+    TOKENS_JSON="design/tokens.json"
+    GENERATOR="./bin/design-tokens.sh"
+
+    if [[ ! -f "$TOKENS_JSON" ]]; then
+        echo "  WARN: $TOKENS_JSON not found (Phase 8 design system not present in this repo). Skipping."
+    elif [[ ! -x "$GENERATOR" ]]; then
+        echo "  WARN: $GENERATOR not found or not executable. Skipping token regeneration."
+    elif ! command -v jq >/dev/null 2>&1; then
+        echo "  WARN: jq not installed. Cannot update design/tokens.json. Skipping."
+        echo "        Install jq (macOS: 'brew install jq') and re-run with --brand-color."
+    else
+        # Write brand color to design/tokens.json via jq
+        jq --argjson L "$BRAND_L" --argjson C "$BRAND_C" --argjson h "$BRAND_H" \
+           '.brand = {L: $L, C: $C, h: $h}' \
+           "$TOKENS_JSON" > "${TOKENS_JSON}.tmp" && mv "${TOKENS_JSON}.tmp" "$TOKENS_JSON"
+        echo "  wrote brand = {L: $BRAND_L, C: $BRAND_C, h: $BRAND_H} to $TOKENS_JSON"
+
+        # Regenerate web + mobile palettes
+        if "$GENERATOR"; then
+            echo "  regenerated design tokens (web + mobile palettes updated)"
+        else
+            echo "  ERROR: $GENERATOR failed. design/tokens.json was updated but palette files may be stale." >&2
+            exit 4
+        fi
+    fi
+fi
 
 # --- Summary -----------------------------------------------------------------
 

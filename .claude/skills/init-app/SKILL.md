@@ -30,19 +30,26 @@ Run these in order and abort with a clear message if any fails:
    > Error: this repo looks already initialized. `com.priorli.triplane` is gone from `mobile/`. If you want to re-bootstrap, run `git reset --hard <pre-init-commit>` and invoke `/init-app` again.
 2. **Git clean check.** Run `git status --short` — must be empty. If uncommitted changes exist:
    > Error: uncommitted changes detected. Commit or stash before running `/init-app`. I won't bootstrap on top of in-progress work.
-3. **Brief available check.** Check if `IDEA.md` exists at the repo root. If not, ask the user: "No `IDEA.md` found. Run `/ideate` first, or paste a brief inline here (product name, tagline, MVP feature backlog — I'll extract what I need)."
+3. **Branch safety check.** Run `git branch --show-current`. If the current branch is `main` AND `com.priorli.triplane` is still present (= we're in the Triplane template repo itself, not a downstream clone), refuse:
+   > Error: refusing to bootstrap on `main` in the template repo. Keep the template pristine by running on a feature branch. Suggested: `git checkout -b forge-<your-slug>`. On a downstream clone of Triplane (where `main` is your app's main and `com.priorli.triplane` has already been renamed by `bin/init.sh`), this check doesn't trip because the marker is absent.
+
+   **Why:** the template repo's `main` is the source of truth for every downstream consumer. Running `/init-app` on it would strip the Phased build plan + Recent decisions log, replace README.md, and rewrite display strings — effectively turning the template into a specific app. That's the opposite of the template's purpose. Feature branches (or the long-lived `forge` branch when using Triplane Forge) are the correct place for bootstrap work.
+4. **Brief available check.** Check if `IDEA.md` exists at the repo root. If not, ask the user: "No `IDEA.md` found. Run `/ideate` first, or paste a brief inline here (product name, tagline, MVP feature backlog — I'll extract what I need)."
 
 ## Step 2 — Read the brief and collect inputs
 
-1. Read `IDEA.md` and extract:
-   - Product name (H1)
-   - Tagline (first `> ` blockquote under the title)
-   - Description (first paragraph under `## Description`)
-   - MVP feature backlog (numbered list under `## MVP feature backlog`) — each entry is `N. <Feature name> — <description>`. Extract the `<Feature name>` parts, convert to kebab-case slugs (e.g., "Photos — attach multiple photos per recipe" → `photos`).
-2. Ask the user for:
-   - **Project slug** (kebab-case) — used by `bin/init.sh`. Suggest one derived from the product name if you can (e.g., "Recipe Share" → `recipe-share`).
-   - **Java namespace** (dotted lowercase, e.g. `com.myorg.recipeshare`) — used by `bin/init.sh`.
-   - **Display name** — defaults to the product name from `IDEA.md` if present. The user can override (e.g., they might want "My App" instead of the formal "My Awesome App Inc.").
+1. Read `IDEA.md`. It has two parts (see `/ideate`'s schema for the full definition):
+   - **YAML frontmatter** between `---` markers at the top. Authoritative source for `suggested_slug` and the `features` list (each item is a kebab-case slug).
+   - **Prose body** below. Source for the product name (H1), tagline (first `> ` blockquote), description (first paragraph under `## Description`), and the human-readable MVP backlog.
+2. Extract the fields:
+   - From frontmatter: `suggested_slug`, `features[]`
+   - From prose: product name, tagline, description
+   - **Do NOT regex-parse the prose backlog** for slugs. Use `features` from frontmatter. If frontmatter is missing or has no `features` list, stop and ask the user to add one (or re-run `/ideate`) — do not fall back to prose parsing.
+3. Ask the user for:
+   - **Project slug** (kebab-case) — used by `bin/init.sh`. Default to `suggested_slug` from frontmatter; user can override.
+   - **Java namespace** (dotted lowercase, e.g. `com.myorg.recipeshare`) — used by `bin/init.sh`. Derive a default from the slug by stripping hyphens (`recipe-share` → `com.myorg.recipeshare`) and present as a suggestion; user supplies their org segment.
+   - **Display name** — defaults to the product name (H1) from `IDEA.md`. User can override (e.g., they might prefer "My App" to the formal "My Awesome App Inc.").
+   - **Brand color (optional, OKLch)** — three floats `L,C,h` (e.g. `0.55,0.20,250` for blue). If provided, Phase 8's `design/tokens.json` `brand` field is updated and `./bin/design-tokens.sh` regenerates the web + mobile palettes as part of Step 5. If skipped, the default gray palette from the template carries through. Only ask if the user actively wants to pick a brand — don't force the choice on someone who's happy with "just make it run first, I'll rebrand later."
 3. Echo the collected values back and wait for confirmation:
    > About to bootstrap with:
    >   Product:     Recipe Share
@@ -66,10 +73,11 @@ List everything the skill will do, in order:
         copies .env.example templates to .env.local and local.properties
 
  2. Run `.claude/skills/init-app/rewrite-docs.sh \
-           --display-name "Recipe Share" --slug recipe-share \
-           --features "recipes,photos,follows,tags" --yes`
+           --display-name "Recipe Share" --slug recipe-share --yes`
+      (features are auto-pulled from IDEA.md frontmatter;
+       tagline + description are auto-pulled from the prose body)
       → strips Phased build plan + Recent decisions log from PLAN.md
-      → resets feature matrix with 4 TODO rows (one per backlog item)
+      → resets feature matrix with 4 TODO rows (one per frontmatter feature)
       → replaces README.md with downstream template
       → resets mobile_plan.md phase tracker
       → rewrites display strings (Compose + web + Prisma):
@@ -124,11 +132,20 @@ Invoke:
 ./.claude/skills/init-app/rewrite-docs.sh \
     --display-name "<DisplayName>" \
     --slug <slug> \
-    --features "<comma-separated-slugs>" \
+    [--brand-color "<L,C,h>"] \
     --yes
 ```
 
-If `IDEA.md` is present at the repo root, the script auto-pulls tagline + description from it. You can also pass `--tagline` and `--description` explicitly if the user wants something different from what's in the brief.
+If `IDEA.md` is present at the repo root, the script auto-pulls three things from it without needing explicit flags:
+- **`features`** from the YAML frontmatter's `features:` list → drives the matrix row seed
+- **Tagline** from the first `> ` blockquote in the prose body → used in README.md + PLAN.md tagline
+- **Description** from the first paragraph under `## Description` → used in README.md + OpenAPI spec description
+
+You can override any of these with `--features`, `--tagline`, or `--description` on the command line if the user wants something different from what's in the brief. The CLI override beats the IDEA.md extraction.
+
+**Brand color pass-through (Phase 8 integration):** if the user supplied a brand color in Step 2, pass it to `rewrite-docs.sh` via `--brand-color "L,C,h"` (three floats, OKLch). The script's Step 5 will: (a) write the value into `design/tokens.json`'s `brand` field via `jq`, (b) run `./bin/design-tokens.sh` to regenerate `web/src/app/generated/tokens.css` and `mobile/.../common/theme/DesignTokens.kt`. If `--brand-color` is absent, the design system stays at its default gray and the regeneration step is skipped. The flag has no effect on templates that don't have Phase 8's design system (the script prints a warning and continues).
+
+If `IDEA.md` has no frontmatter (or no `features:` key), the matrix stays empty and the `/feature add` loop in Step 8 is a no-op — the user will have to run `/feature add <slug>` manually later.
 
 Capture output. If the script exits non-zero:
 - Exit 3: "already rewritten" — means `rewrite-docs.sh` ran successfully in a previous invocation but `bin/init.sh` didn't, or the user is re-running on partially-rewritten state. Surface the error and suggest `git reset --hard` to restore.
