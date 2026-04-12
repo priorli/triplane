@@ -92,6 +92,7 @@ The `/release-check` skill runs all three in parallel and then invokes `/audit` 
 - **Clerk `<SignIn/>` needs `[[...rest]]` catch-all** — a static `sign-in/page.tsx` 404s on Clerk sub-routes (`/sign-in/factor-one`, `/sign-in/sso-callback`). Use `sign-in/[[...rest]]/page.tsx`.
 - **`prisma db push` before first run** — a new downstream DB has no tables. Every API route 500s silently until you run `prisma db push` or `prisma migrate deploy`.
 - **Missing env vars → silent 500s** — if `process.env.SOME_KEY` is undefined, routes crash before the error wrapper can produce `{ error: { code, message } }`. Every env var must be in `.env.example`.
+- **Next.js 16 `proxy.ts` must use a function declaration** — `export const proxy = clerkMiddleware(...)` silently fails. Next.js 16 renamed `middleware.ts` to `proxy.ts` and requires `export function proxy(...)` or `export const proxy = function(...)`. If the proxy never runs, next-intl locale rewrites don't happen and `/` returns 404.
 
 ## Available skills
 

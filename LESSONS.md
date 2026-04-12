@@ -406,6 +406,14 @@ These gotchas surfaced during Triplane Forge test runs — automated app bootstr
 
 **Fix:** Every `process.env.*` reference should have a corresponding entry in `.env.example`. Features that add new env vars must update `.env.example` in the same PR. The `/feature continue` prompt now mandates this.
 
+### Next.js 16 `proxy.ts` requires a function declaration
+
+**What happened:** The landing page at `/` returned 404. All locale-prefixed routes (`/en-US/`, `/en-US/home`) worked fine, but the root `/` never redirected.
+
+**Root cause:** Next.js 16 renamed `middleware.ts` to `proxy.ts` and requires the exported `proxy` to be an actual function declaration. The template used `export const proxy = clerkMiddleware(...)` which Next.js 16 didn't recognize as a valid proxy function. The middleware never ran, so next-intl's locale rewrite from `/` to `/en-US/` never happened.
+
+**Fix:** Change the export to a function declaration: `export const proxy = clerkMiddleware((auth, request) => { ... })` must be a recognizable function expression, not just an assigned value from a library call. Alternatively, wrap it: `export function proxy(...args) { return clerkMiddleware(handler)(...args); }`. The key test: if `/` 404s but `/en-US/` works, the proxy isn't running.
+
 ---
 
 ## Build verification practices
