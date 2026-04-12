@@ -249,6 +249,15 @@ Next:
      "why does this app exist" — keeping it is usually worth it).
 ```
 
+## Step 9.5 — Post-bootstrap hardening
+
+Run these checks AFTER the final report, BEFORE the user commits:
+
+1. **`global-error.tsx`**: if `web/src/app/global-error.tsx` does NOT exist, create it — `"use client"`, its own `<html>/<body>`, error + reset props. Next.js 16 prerender crashes without it.
+2. **Clerk sign-in catch-all**: if `sign-in/page.tsx` exists without `[[...rest]]`, move it. Clerk multi-step flows need the catch-all.
+3. **`.env.example` audit**: grep `process.env.*` in `web/src/`. Every variable not in `.env.example` gets a commented entry with a note on where to get the value.
+4. **`prisma db push`**: if DATABASE_URL is set in `.env.local`, run `cd web && npx prisma db push`. If not, skip — mention it in the final report.
+
 ## Critical reminders
 
 - **Do not commit.** Leave `git status` for the user to review.

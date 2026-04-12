@@ -7,6 +7,7 @@ export type SessionStatus =
   | "awaiting_approval"
   | "building"
   | "spec_drafting"
+  | "verifying"
   | "ready"
   | "failed"
   | "discarded";
@@ -49,11 +50,41 @@ export interface SessionInputs {
   brandColor?: { L: number; C: number; h: number };
 }
 
+/**
+ * Which forge phases the user enabled when the session was created. Stored
+ * on the session so that each phase can look up its own successor without
+ * needing a long-lived worker closure — any HTTP request handler can read
+ * these flags from the session store and trigger the next phase via
+ * `triggerNextPhase()`.
+ */
+export interface PhaseFlags {
+  planReview: boolean;
+  seedDemo: boolean;
+  implementFeatures: boolean;
+  verifyBuilds: boolean;
+}
+
 export interface SessionState {
   sessionId: string;
   userId: string;
   worktreePath: string;
   inputs: SessionInputs;
+  /**
+   * The per-session phase toggles the user selected when creating the
+   * forge session. Read by phase-runner.ts's `getNextPhase()` to chain
+   * the forge pipeline HTTP-hop by HTTP-hop.
+   */
+  phaseFlags: PhaseFlags;
+  /**
+   * The HTTP origin (protocol + host + port) where this session's Next.js
+   * server is reachable. Extracted from the incoming POST /sessions
+   * request at creation time and used by `triggerNextPhase()` to fire
+   * the next phase's HTTP request at the correct port — so we don't have
+   * to hardcode localhost:3000 or require a FORGE_BASE_URL env var.
+   *
+   * Example: "http://localhost:3001"
+   */
+  baseUrl: string;
   status: SessionStatus;
   events: ForgeEvent[];
   pendingApprovals: Map<string, PendingApproval>;
@@ -72,6 +103,8 @@ class SessionStore {
     userId: string;
     worktreePath: string;
     inputs: SessionInputs;
+    phaseFlags: PhaseFlags;
+    baseUrl: string;
   }): SessionState {
     const sessionId = randomUUID();
     const now = new Date();
@@ -80,6 +113,8 @@ class SessionStore {
       userId: args.userId,
       worktreePath: args.worktreePath,
       inputs: args.inputs,
+      phaseFlags: args.phaseFlags,
+      baseUrl: args.baseUrl,
       status: "created",
       events: [],
       pendingApprovals: new Map(),

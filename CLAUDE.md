@@ -87,6 +87,11 @@ The `/release-check` skill runs all three in parallel and then invokes `/audit` 
 - **`coil-network-okhttp` is JVM-only** — use `coil-network-ktor3` instead for Compose Multiplatform.
 - **KDoc and unbalanced braces** — Kotlin/Native's KDoc parser chokes on `{...}` text that looks like unclosed inline tags. Prefer `//` line comments when the text contains braces.
 - **Kotlin/Native ObjC exporter crashes on some composeApp public types** — Kotlin/Native 2.3.10 and 2.3.20 have a `ClassCastException` inside `createConstructorAdapter` that trips on Phase 4-shaped composeApp types. **Workaround: mark `composeApp/feature/<name>/*` types as `internal`** so they're excluded from the ObjC export surface. Swift-facing bridge types (e.g. `feature/auth/ClerkAuthBridge.kt`) stay public. See the 2026-04-11 Phase 7 decisions log entry in PLAN.md for the full remediation story.
+- **Next.js 16 requires `global-error.tsx`** — without `web/src/app/global-error.tsx`, `next build` crashes during prerender of `/_global-error` with `useContext` null. The file must be `"use client"` with its own `<html>/<body>` and no context-provider dependencies.
+- **`NODE_ENV=development` during `next build`** breaks prerendering. The build script uses `NODE_ENV=production next build` to prevent shell inheritance from the dev session.
+- **Clerk `<SignIn/>` needs `[[...rest]]` catch-all** — a static `sign-in/page.tsx` 404s on Clerk sub-routes (`/sign-in/factor-one`, `/sign-in/sso-callback`). Use `sign-in/[[...rest]]/page.tsx`.
+- **`prisma db push` before first run** — a new downstream DB has no tables. Every API route 500s silently until you run `prisma db push` or `prisma migrate deploy`.
+- **Missing env vars → silent 500s** — if `process.env.SOME_KEY` is undefined, routes crash before the error wrapper can produce `{ error: { code, message } }`. Every env var must be in `.env.example`.
 
 ## Available skills
 

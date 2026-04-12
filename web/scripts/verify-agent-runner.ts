@@ -52,6 +52,13 @@ async function main() {
       namespace: "com.smoke.test",
       displayName: "Smoke Test",
     },
+    phaseFlags: {
+      planReview: false,
+      seedDemo: false,
+      implementFeatures: false,
+      verifyBuilds: false,
+    },
+    baseUrl: "http://localhost:3000",
   });
 
   const toolCalls: Array<{ name: string; input: unknown }> = [];

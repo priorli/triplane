@@ -63,6 +63,94 @@ interface StreamJsonEvent {
   [key: string]: unknown;
 }
 
+/**
+ * Compact a message content block for SSE delivery. Preserves the block
+ * type and meaningful fields (text, tool name + input, tool result, thinking),
+ * trimming overly large values so the session store stays bounded.
+ *
+ * Per-block caps:
+ * - text: 4000 chars (typical assistant prose fits; long files get truncated)
+ * - thinking: 2000 chars (extended-thinking reasoning)
+ * - tool_use input: 2000 chars of JSON (command strings, file contents)
+ * - tool_result text: 2000 chars
+ */
+function compactContentBlock(
+  block: Record<string, unknown>,
+): Record<string, unknown> {
+  const type = typeof block.type === "string" ? block.type : "unknown";
+
+  if (type === "text") {
+    const text = String(block.text ?? "");
+    return {
+      type: "text",
+      text: text.length > 4000 ? text.slice(0, 4000) + "…" : text,
+    };
+  }
+
+  if (type === "thinking") {
+    const thinking = String(block.thinking ?? "");
+    return {
+      type: "thinking",
+      thinking:
+        thinking.length > 2000 ? thinking.slice(0, 2000) + "…" : thinking,
+    };
+  }
+
+  if (type === "tool_use") {
+    const name = typeof block.name === "string" ? block.name : "?";
+    const id = typeof block.id === "string" ? block.id : undefined;
+    // Stringify input and truncate if large. Keep as a string for the
+    // client — the UI renders it as a code block, not an object tree.
+    let inputStr: string;
+    try {
+      inputStr = JSON.stringify(block.input ?? {}, null, 2);
+    } catch {
+      inputStr = String(block.input ?? "");
+    }
+    if (inputStr.length > 2000) {
+      inputStr = inputStr.slice(0, 2000) + "\n…";
+    }
+    return { type: "tool_use", name, id, input: inputStr };
+  }
+
+  if (type === "tool_result") {
+    const toolUseId =
+      typeof block.tool_use_id === "string" ? block.tool_use_id : undefined;
+    const isError = block.is_error === true;
+    // Tool results can be strings, arrays of content blocks, or structured
+    // shapes. Normalize to a single text string for display.
+    let text = "";
+    const content = block.content;
+    if (typeof content === "string") {
+      text = content;
+    } else if (Array.isArray(content)) {
+      text = content
+        .map((c) => {
+          if (typeof c === "string") return c;
+          if (c && typeof c === "object" && "text" in c) {
+            return String((c as { text: unknown }).text ?? "");
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join("\n");
+    }
+    return {
+      type: "tool_result",
+      toolUseId,
+      isError,
+      text: text.length > 2000 ? text.slice(0, 2000) + "…" : text,
+    };
+  }
+
+  // Unknown block type — preserve the type tag and stringify a short
+  // preview so unusual events still show up in the log.
+  return {
+    type,
+    raw: JSON.stringify(block).slice(0, 500),
+  };
+}
+
 function emitSessionEvent(sessionId: string, evt: StreamJsonEvent) {
   // Project a CLI stream-json event into the existing session event queue.
   // Field names (`type`, `uuid`, `subtype`, `is_error`, `total_cost_usd`,
@@ -72,6 +160,17 @@ function emitSessionEvent(sessionId: string, evt: StreamJsonEvent) {
 
   if (evt.type === "assistant" || evt.type === "user") {
     payload.uuid = evt.uuid;
+    // Extract and compact the message content blocks so the UI can render
+    // the actual thinking / text / tool calls / tool results instead of
+    // opaque "assistant turn" placeholders. Size-capped per block to keep
+    // the in-memory session store bounded.
+    const msg = evt.message as
+      | { role?: string; content?: Array<Record<string, unknown>> }
+      | undefined;
+    if (msg?.role) payload.role = msg.role;
+    if (msg?.content && Array.isArray(msg.content)) {
+      payload.content = msg.content.map(compactContentBlock);
+    }
   }
   if (evt.type === "result") {
     payload.subtype = evt.subtype;
@@ -141,17 +240,42 @@ function buildClaudeArgs(args: RunAgentArgs): string[] {
 
 /**
  * Build the environment for the child `claude` process. Inherits OAuth
- * credentials from the parent by passing through `process.env`, but unsets
- * a handful of env vars that would confuse the child (parent's session ID,
- * hook wiring, SDK client identifier).
+ * credentials from the parent's home directory (`~/.claude/`) by passing
+ * through `process.env`, but unsets env vars that would confuse the child
+ * or force it away from subscription-backed OAuth.
+ *
+ * **Critical**: we strip `ANTHROPIC_API_KEY` (and other auth-tier env vars)
+ * before spawning. If present, `claude` prefers them over the OAuth token
+ * stored in `~/.claude/`, meaning every forge-spawned `claude -p` run would
+ * burn API credits instead of using the user's Claude Max subscription —
+ * defeating the entire purpose of the CLI path. We strip them here so the
+ * child always authenticates via OAuth.
+ *
+ * Users who explicitly want API-key mode should set `FORGE_USE_SDK=1`,
+ * which routes through sdk-runner.ts instead. This CLI path is
+ * subscription-only by design.
  */
 function buildChildEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
+
   // Don't let the forge parent's own claude-code session state leak in.
   delete env.CLAUDE_CODE_SESSION_ID;
   delete env.CLAUDE_CODE_ENTRYPOINT;
   delete env.CLAUDE_CODE_HOOK_EVENT;
   delete env.CLAUDE_AGENT_SDK_CLIENT_APP;
+
+  // Strip every auth-tier env var the `claude` CLI recognizes so the
+  // subprocess falls through to its stored OAuth subscription token.
+  // See `claude --help` output around --bare and the "auth hierarchy"
+  // section of the Claude Code docs — any of these forces a non-OAuth path.
+  delete env.ANTHROPIC_API_KEY;
+  delete env.ANTHROPIC_AUTH_TOKEN;
+  delete env.CLAUDE_CODE_USE_BEDROCK;
+  delete env.CLAUDE_CODE_USE_VERTEX;
+  delete env.CLAUDE_CODE_USE_FOUNDRY;
+  delete env.AWS_BEARER_TOKEN_BEDROCK;
+  delete env.GOOGLE_APPLICATION_CREDENTIALS;
+
   // Tag the subprocess so logs can distinguish forge runs from interactive runs.
   env.TRIPLANE_FORGE_RUN = "1";
   return env;

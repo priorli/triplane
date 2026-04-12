@@ -28,6 +28,8 @@ export const createSessionRequestSchema = z.object({
   brandColor: brandColorSchema.optional(),
   planReview: z.boolean().optional().default(false),
   seedDemo: z.boolean().optional().default(false),
+  implementFeatures: z.boolean().optional().default(true),
+  verifyBuilds: z.boolean().optional().default(true),
 });
 
 export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;

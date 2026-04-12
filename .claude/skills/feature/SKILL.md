@@ -128,6 +128,7 @@ The OpenAPI spec at `/api/v1/docs` is the contract for mobile development. Stale
 - **Don't expand scope.** If the user asks for the mobile side of a feature, don't refactor the web side unless explicitly asked.
 - **Build verify before declaring done.** Especially mobile, where iOS Kotlin/Native catches things Android compilation misses.
 - **iOS is gated on Phase 7.** Don't claim any feature works on iOS until Phase 7 ships — the auth wall makes everything else unrunnable.
+- **Update `.env.example` when adding env vars.** If your implementation references a new `process.env.*` variable, add a commented entry to `web/.env.example` with the variable name and a note on where to get the value. Missing env vars cause silent 500s.
 
 ## Files this skill touches frequently
 

@@ -6,6 +6,10 @@ import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  PhaseToggles,
+  PHASE_TOGGLE_DEFAULTS,
+} from "../../_components/PhaseToggles";
 
 interface Question {
   id: string;
@@ -43,6 +47,19 @@ export function QuickForm() {
   const [brandL, setBrandL] = useState(0.55);
   const [brandC, setBrandC] = useState(0.2);
   const [brandH, setBrandH] = useState(250);
+
+  const [planReview, setPlanReview] = useState<boolean>(
+    PHASE_TOGGLE_DEFAULTS.planReview,
+  );
+  const [seedDemo, setSeedDemo] = useState<boolean>(
+    PHASE_TOGGLE_DEFAULTS.seedDemo,
+  );
+  const [implementFeatures, setImplementFeatures] = useState<boolean>(
+    PHASE_TOGGLE_DEFAULTS.implementFeatures,
+  );
+  const [verifyBuilds, setVerifyBuilds] = useState<boolean>(
+    PHASE_TOGGLE_DEFAULTS.verifyBuilds,
+  );
 
   const [answers, setAnswers] = useState<AnsweredQA[]>([]);
   const [pendingQuestions, setPendingQuestions] = useState<Question[] | null>(null);
@@ -98,7 +115,14 @@ export function QuickForm() {
       const res = await fetch("/api/v1/forge/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...fields, brandColor }),
+        body: JSON.stringify({
+          ...fields,
+          brandColor,
+          planReview,
+          seedDemo,
+          implementFeatures,
+          verifyBuilds,
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -151,15 +175,29 @@ export function QuickForm() {
 
   const showInitialForm = pendingQuestions === null && proposed === null;
 
+  const phaseToggles = (
+    <PhaseToggles
+      planReview={planReview}
+      setPlanReview={setPlanReview}
+      seedDemo={seedDemo}
+      setSeedDemo={setSeedDemo}
+      implementFeatures={implementFeatures}
+      setImplementFeatures={setImplementFeatures}
+      verifyBuilds={verifyBuilds}
+      setVerifyBuilds={setVerifyBuilds}
+      disabled={busyStage !== null}
+    />
+  );
+
   return (
     <div className="space-y-6">
       {showInitialForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("forge.quick.promptCardTitle")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handlePromptSubmit} className="space-y-4">
+        <form onSubmit={handlePromptSubmit} className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("forge.quick.promptCardTitle")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="space-y-1.5">
                 <label htmlFor="quick-prompt" className="text-sm font-medium">
                   {t("forge.quick.promptLabel")}
@@ -193,18 +231,23 @@ export function QuickForm() {
                   section: t("forge.form.brandSection"),
                 }}
               />
+            </CardContent>
+          </Card>
 
-              <Button
-                type="submit"
-                disabled={!prompt.trim() || busyStage !== null}
-              >
-                {busyStage === "extracting"
-                  ? t("forge.quick.submitting")
-                  : t("forge.quick.submit")}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+          {phaseToggles}
+
+          <div className="flex items-center justify-end">
+            <Button
+              type="submit"
+              size="lg"
+              disabled={!prompt.trim() || busyStage !== null}
+            >
+              {busyStage === "extracting"
+                ? t("forge.quick.submitting")
+                : t("forge.quick.submit")}
+            </Button>
+          </div>
+        </form>
       )}
 
       {pendingQuestions && (
@@ -303,13 +346,20 @@ export function QuickForm() {
             </div>
             <div className="space-y-1">
               <p className="text-muted-foreground">Features</p>
-              <ul className="list-disc pl-5 space-y-1">
-                {proposed.features.map((f, i) => (
-                  <li key={i}>
-                    <span className="font-medium">{f.name}</span> — {f.description}
-                  </li>
-                ))}
-              </ul>
+              {Array.isArray(proposed.features) ? (
+                <ul className="list-disc pl-5 space-y-1">
+                  {proposed.features.map((f, i) => (
+                    <li key={i}>
+                      <span className="font-medium">{f.name}</span> — {f.description}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-destructive text-xs font-mono">
+                  (extractor returned malformed features — re-run the extract
+                  or use the full form)
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap gap-2 pt-2">
               <Button

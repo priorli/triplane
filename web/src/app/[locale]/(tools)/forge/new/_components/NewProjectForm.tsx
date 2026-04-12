@@ -6,6 +6,10 @@ import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  PhaseToggles,
+  PHASE_TOGGLE_DEFAULTS,
+} from "../../_components/PhaseToggles";
 
 interface FeatureRow {
   name: string;
@@ -51,8 +55,18 @@ export function NewProjectForm() {
   const [brandC, setBrandC] = useState(0.2);
   const [brandH, setBrandH] = useState(250);
 
-  const [planReview, setPlanReview] = useState(false);
-  const [seedDemo, setSeedDemo] = useState(false);
+  const [planReview, setPlanReview] = useState<boolean>(
+    PHASE_TOGGLE_DEFAULTS.planReview,
+  );
+  const [seedDemo, setSeedDemo] = useState<boolean>(
+    PHASE_TOGGLE_DEFAULTS.seedDemo,
+  );
+  const [implementFeatures, setImplementFeatures] = useState<boolean>(
+    PHASE_TOGGLE_DEFAULTS.implementFeatures,
+  );
+  const [verifyBuilds, setVerifyBuilds] = useState<boolean>(
+    PHASE_TOGGLE_DEFAULTS.verifyBuilds,
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +138,8 @@ export function NewProjectForm() {
             : undefined,
           planReview,
           seedDemo,
+          implementFeatures,
+          verifyBuilds,
         }),
       });
       const body = await res.json();
@@ -362,57 +378,17 @@ export function NewProjectForm() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("forge.form.planReviewSection")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={planReview}
-              onChange={(e) => setPlanReview(e.currentTarget.checked)}
-              disabled={submitting}
-              className="mt-1"
-            />
-            <span className="font-medium">
-              {t("forge.form.planReviewLabel")}
-            </span>
-          </label>
-          <p className="text-xs text-muted-foreground pl-6">
-            {t("forge.form.planReviewHint")}
-          </p>
-          <p className="text-xs text-muted-foreground pl-6">
-            {t("forge.form.planReviewDefault")}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("forge.form.seedDemoSection")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <label className="flex items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={seedDemo}
-              onChange={(e) => setSeedDemo(e.currentTarget.checked)}
-              disabled={submitting}
-              className="mt-1"
-            />
-            <span className="font-medium">
-              {t("forge.form.seedDemoLabel")}
-            </span>
-          </label>
-          <p className="text-xs text-muted-foreground pl-6">
-            {t("forge.form.seedDemoHint")}
-          </p>
-          <p className="text-xs text-muted-foreground pl-6">
-            {t("forge.form.seedDemoDefault")}
-          </p>
-        </CardContent>
-      </Card>
+      <PhaseToggles
+        planReview={planReview}
+        setPlanReview={setPlanReview}
+        seedDemo={seedDemo}
+        setSeedDemo={setSeedDemo}
+        implementFeatures={implementFeatures}
+        setImplementFeatures={setImplementFeatures}
+        verifyBuilds={verifyBuilds}
+        setVerifyBuilds={setVerifyBuilds}
+        disabled={submitting}
+      />
 
       {error && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">

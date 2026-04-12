@@ -1,91 +1,218 @@
 import { randomUUID } from "node:crypto";
-import { runAgent, type ApprovalRequest, type ApprovalDecision } from "./agent-runner";
+import {
+  runAgent,
+  type ApprovalRequest,
+  type ApprovalDecision,
+} from "./agent-runner";
 import { sessionStore, type SessionInputs } from "./session-store";
 
-export interface StartWorkerArgs {
-  sessionId: string;
-  worktreePath: string;
-  /** Form inputs the user provided via the /forge/new page. */
-  inputs: SessionInputs;
-  /**
-   * When true, run `/plan-autoplan` (the five-role CEO/Eng/Design/DevEx/QA
-   * planning review) before `/init-app`. Produces `PLAN_REVIEW.md` in the
-   * worktree. If the plan phase fails, the session fails and `/init-app`
-   * never runs. Defaults to false — existing flow is unchanged.
-   */
-  planReview?: boolean;
-  /**
-   * When true, run `/seed-demo` after `/init-app` succeeds and before the
-   * session is marked `ready`. Populates the downstream project's local DB
-   * with Faker-powered demo records for a presentation. Non-fatal: a seed
-   * failure is recorded as an error event but does not fail the session —
-   * the bootstrap itself is the primary deliverable. Defaults to false.
-   */
-  seedDemo?: boolean;
-}
-
-function buildPlanAutoplanPrompt(): string {
-  return [
-    "Run /plan-autoplan.",
-    "",
-    "IDEA.md is at the repo root. Produce PLAN_REVIEW.md with CEO,",
-    "Engineering, Design, DevEx, and QA review sections, followed by a",
-    "Next steps block.",
-    "",
-    "Do NOT touch source files. Do NOT draft spec files under specs/**.",
-    "Do NOT run bin/init.sh or rewrite-docs.sh. The plan review is read-only",
-    "except for appending sections to PLAN_REVIEW.md.",
-    "",
-    "Start with Step 1 now.",
-  ].join("\n");
-}
-
-function buildSeedDemoPrompt(): string {
-  return [
-    "Run /seed-demo.",
-    "",
-    "The downstream project has just been bootstrapped by /init-app. The",
-    "Prisma schema is at `web/prisma/schema.prisma`, the seed stub is at",
-    "`web/prisma/seed.ts`, and the package.json is at `web/package.json`.",
-    "",
-    "Follow the skill's steps: read the schema, overwrite the seed stub",
-    "with a Faker-powered generator scoped to DEMO_USER_ID, patch",
-    "package.json (add @faker-js/faker + prisma seed config + db:seed",
-    "script), run `bun install`, and — if DATABASE_URL is set in",
-    "`web/.env.local` or `web/.env` — run `bun run db:seed` to populate",
-    "the DB.",
-    "",
-    "This is a non-fatal postlude. If DATABASE_URL is missing, generate",
-    "the files but do NOT fail the session — just print the command the",
-    "user should run themselves.",
-    "",
-    "Do NOT touch source files outside web/prisma/seed.ts and",
-    "web/package.json. Do NOT create Attachments or call any object",
-    "storage. Do NOT modify CLAUDE.md, README.md, or any other docs.",
-    "",
-    "Start with Step 1 now.",
-  ].join("\n");
-}
+// BUILD MARKER: printed on module load so you can verify the dev server
+// is running the latest code. If you don't see this in your `bun run dev`
+// terminal after a file save or restart, HMR is serving stale code.
+const __FORGE_WORKER_BUILD =
+  "2026-04-12 v0.1.3 phase-runner split (startWorker removed)";
+console.log(`[forge worker] module loaded: ${__FORGE_WORKER_BUILD}`);
 
 /**
- * Builds the initial prompt for /init-app, pre-answering the skill's Step 2
- * Q&A (slug / namespace / display name / brand color) so the agent doesn't
- * pause for conversational inputs it already has.
+ * worker.ts is now a *thin* module containing only:
  *
- * The agent still runs /init-app's step sequence (pre-flight → bin/init.sh →
- * rewrite-docs.sh → build verification → /feature add loop), and tool calls
- * still route through `canUseTool` for real per-action approval gates.
+ *   1. The prompt builders used by every phase (plan-autoplan, init-app,
+ *      seed-demo, feature-continue, resume). Prompt text is static and
+ *      safe to share across phase-runner + resume paths.
+ *   2. `startResumeWorker()` — the standalone `claude -c` resume flow.
+ *      Resume is deliberately kept as a one-shot IIFE because it doesn't
+ *      chain into other phases (it picks up mid-session and completes
+ *      whatever was running). No HMR chain issues because it's a single
+ *      request-bounded worker.
+ *
+ * Everything else — the multi-phase orchestration, per-phase IIFEs, build
+ * verification subprocess runner, implementFeatures loop — moved to
+ * `phase-runner.ts`. That module is imported by the `/run-phase` HTTP
+ * route handler, so each phase runs in a fresh Next.js route-handler
+ * context (HMR-safe).
+ *
+ * See `phase-runner.ts` module header for the architectural rationale.
  */
-function buildInitAppPrompt(inputs: SessionInputs): string {
+
+// ---------------------------------------------------------------------------
+// Shared prompt preamble (file-read limit fallback guidance)
+// ---------------------------------------------------------------------------
+
+const FORGE_PROMPT_PREAMBLE = [
+  "=== Forge session file-reading guidance ===",
+  "",
+  "Claude Code's Read tool has a hardcoded 10,000-token-per-call limit.",
+  "Files that exceed it return an error like:",
+  "  \"File content (12771 tokens) exceeds maximum allowed tokens (10000).\"",
+  "",
+  "When you hit this error, DO NOT stop or retry the same Read — the limit",
+  "is per-call and hardcoded. Fall back IMMEDIATELY to one of these:",
+  "",
+  "- **Bash with line slicing**: `sed -n '1,200p' <file>` or",
+  "  `awk 'NR>=100 && NR<=300' <file>` or `head -n 500 <file>`.",
+  "- **Read with offset + limit**: `Read({ file_path, offset: 200, limit: 100 })`",
+  "  chunks the file across multiple calls.",
+  "- **Grep** (rg) for keyword search without reading the whole file.",
+  "",
+  "Files in this repo that commonly exceed the cap:",
+  "  PLAN.md (after matrix fills up), LESSONS.md, CLAUDE.md,",
+  "  long /feature continue spec files, web/prisma/schema.prisma,",
+  "  and any JSONL conversation history under ~/.claude/projects/.",
+  "",
+  "Do not treat Read errors as failures. Try Bash. Continue the task.",
+  "",
+  "=== End file-reading guidance ===",
+  "",
+].join("\n");
+
+// ---------------------------------------------------------------------------
+// Prompt builders — exported for phase-runner.ts and startResumeWorker
+// ---------------------------------------------------------------------------
+
+export function buildPlanAutoplanPrompt(): string {
+  // This prompt does NOT use the /plan-autoplan skill or its sub-skills.
+  // In -p mode, invoking sub-skills via the Skill tool doesn't chain them
+  // — each sub-skill reads its SKILL.md (which says "write your section
+  // and stop, the orchestrator will continue") and the agent stops because
+  // there's no separate orchestrator. This prompt inlines all five
+  // reviewer roles so the agent executes them as a single continuous task.
+  return FORGE_PROMPT_PREAMBLE + [
+    "You are running a five-role planning review of the product described",
+    "in `IDEA.md` at the repo root. You must execute ALL FIVE reviews in a",
+    "SINGLE continuous conversation. Do NOT stop between reviewers. Do NOT",
+    "wait for any external orchestrator. You are the orchestrator.",
+    "",
+    "## Ground rules",
+    "",
+    "- Read files only, write exactly one file: `PLAN_REVIEW.md` at the repo root.",
+    "- Do NOT touch source files under `web/`, `mobile/`, or `specs/**`.",
+    "- Do NOT run `bin/init.sh` or `rewrite-docs.sh`.",
+    "- Do NOT use the `Skill` tool to invoke `/plan-ceo-review` etc. — ignore",
+    "  those standalone skills entirely. Follow the inline guidance below.",
+    "",
+    "## Step 1 — Read the brief",
+    "",
+    "Read `IDEA.md` at the repo root. Absorb the product name, tagline,",
+    "description, target user, MVP feature backlog, out-of-scope list,",
+    "constraints, and open questions.",
+    "",
+    "## Step 2 — Create PLAN_REVIEW.md with the header",
+    "",
+    "Use the `Write` tool to create `PLAN_REVIEW.md` at the repo root with:",
+    "",
+    "```markdown",
+    "# Plan review — <product name from IDEA.md>",
+    "",
+    "_Generated by Triplane Forge on <today's date>. Five reviewers: CEO,",
+    "Engineering, Design, DevEx, QA._",
+    "```",
+    "",
+    "## Step 3 — Append `## CEO review`",
+    "",
+    "Play a founder/CEO role. Push back where the brief is soft, cut what",
+    "doesn't pay rent. Use the `Edit` tool to append a new `## CEO review`",
+    "section to `PLAN_REVIEW.md` with these exact subsections:",
+    "",
+    "- **Sharper target user**: one sentence narrowing the brief's target to",
+    "  a specific, testable user segment.",
+    "- **The core hypothesis**: one sentence naming what has to be true for",
+    "  this product to work. `<user> will <behavior> because <reason>.`",
+    "- **Cut list (v0.1)**: bulleted list of features that should be deferred,",
+    "  with one-line rationale each. Be stingy but decisive.",
+    "- **What's missing**: 2–3 bullets on gaps — antagonist, failure modes,",
+    "  monetization questions, required integrations.",
+    "- **Product-market-fit readiness: N/10** with one-sentence justification.",
+    "",
+    "## Step 4 — Append `## Engineering review`",
+    "",
+    "Play an engineering manager role. Architect the build and name the",
+    "load-bearing risks. Use `Edit` to append a `## Engineering review`",
+    "section with:",
+    "",
+    "- **Surfaces in scope**: `Web: yes/no`, `Mobile (Android): yes/no`,",
+    "  `Mobile (iOS): yes/no` — with a one-line scope per surface.",
+    "- **Architecture sketch**: 3–6 bullets naming the concrete directories",
+    "  that change (e.g., `web/src/app/api/v1/campaigns/route.ts`,",
+    "  `mobile/shared/.../domain/campaigns/`). No code — paths and their",
+    "  relationships only.",
+    "- **Load-bearing risks**: 2–5 bullets. Each risk is one sentence that",
+    "  identifies a decision that, if wrong, forces rework.",
+    "- **Gotcha watchlist**: pull from `CLAUDE.md § Common gotchas`",
+    "  (`String.format` JVM-only, iOS ObjC exporter crashes on public",
+    "  composeApp types, Next.js 16 `await params`, etc.) — only list gotchas",
+    "  this specific brief would trip. If none apply, write `_(none)_`.",
+    "- **Test strategy**: what's worth unit testing, what's integration, what",
+    "  defers to future `/qa`. Don't over-prescribe.",
+    "- **Implementability: N/10** with one-sentence justification.",
+    "",
+    "## Step 5 — Append `## Design review`",
+    "",
+    "Play a design/UX role. Prose only — no mocks, no HTML, no Figma-speak.",
+    "Use `Edit` to append a `## Design review` section with:",
+    "",
+    "- **Rubric table** (4 rows): Clarity / Discoverability / Delight /",
+    "  Accessibility. Each scored 0–10 with one-line justification.",
+    "- **Three interaction decisions**: the three choices that will most",
+    "  shape the product's feel.",
+    "- **One more cut**: name one feature you'd reluctantly cut for design",
+    "  coherence.",
+    "- **Design readiness: N/10** averaged from the rubric.",
+    "",
+    "## Step 6 — Append `## DevEx review`",
+    "",
+    "Play a developer-experience role. Imagine a new contributor cloning",
+    "the downstream repo tomorrow. Use `Edit` to append a `## DevEx review`",
+    "section with:",
+    "",
+    "- **Top 3 onboarding friction points** for the specific feature set.",
+    "- **Recommended `README.md` additions**: 2–3 bullets referencing",
+    "  existing Triplane commands and skills.",
+    "- **Recommended `CLAUDE.md` additions**: 1–2 downstream-specific gotchas.",
+    "- **Onboarding: N/10** justified by the clone → first feature shipped gap.",
+    "",
+    "## Step 7 — Append `## QA review`",
+    "",
+    "Play a plan-phase QA lead. The product doesn't exist yet — write the",
+    "test rubric a future `/qa` run would execute against. Use `Edit` to",
+    "append a `## QA review` section with:",
+    "",
+    '- _Opening italic note_: "Plan-phase scenarios. No browser automation',
+    '  — the live-browser /qa skill is roadmap."',
+    "- **Per-feature scenarios**: one `### <feature-name>` subsection per",
+    "  post-cut-list MVP item. Golden path / Edge case 1 / Edge case 2, then",
+    '  an Acceptance criterion in "A user can..." voice.',
+    "- **Cross-feature risks**: 2–4 bullets.",
+    "- **Regression watchlist (Triplane invariants)**: 3–4 bullets citing",
+    "  architecture principles the product could quietly break.",
+    "- **Testability: N/10**.",
+    "",
+    "## Step 8 — Append `## Next steps`",
+    "",
+    "Synthesize the top actions across all five reviews. Use `Edit` to",
+    "append a `## Next steps` section with top three concrete actions,",
+    "a recommended first command, and a per-reviewer score table.",
+    "",
+    "## Step 9 — Report done",
+    "",
+    "Print a 2–3 line summary to the chat. Name the `PLAN_REVIEW.md` path,",
+    "the five reviewer scores, and the recommended next command.",
+    "",
+    "## Critical — do NOT stop early",
+    "",
+    "You MUST complete all nine steps in this single run. Do NOT stop after",
+    "Step 3 or any intermediate step. Each `Edit` tool call returns quickly",
+    "— that is your cue to move to the NEXT step, not to end the conversation.",
+    "",
+    "Start with Step 1 now.",
+  ].join("\n");
+}
+
+export function buildInitAppPrompt(inputs: SessionInputs): string {
   const hasBrand = inputs.brandColor !== undefined;
   const brandTriple = hasBrand
     ? `${inputs.brandColor!.L},${inputs.brandColor!.C},${inputs.brandColor!.h}`
     : "";
 
-  // Build the prescriptive rewrite-docs.sh invocation for Step 5. The goal is
-  // that the agent doesn't have to parse any format or infer any flag shape —
-  // we give it the exact bash command to copy (only the working-dir-relative
-  // path to rewrite-docs.sh has to be resolved, and Claude Code handles that).
   const step5Command = hasBrand
     ? [
         "When you reach Step 5, invoke `rewrite-docs.sh` with this EXACT command",
@@ -115,7 +242,7 @@ function buildInitAppPrompt(inputs: SessionInputs): string {
         "`design/tokens.json` stays at the default gray palette.",
       ].join("\n");
 
-  return [
+  return FORGE_PROMPT_PREAMBLE + [
     "Run /init-app to bootstrap this Triplane-template clone for the downstream project.",
     "",
     "`IDEA.md` is at the repo root. The user has already provided the Step 2 inputs via the Triplane Forge web UI — use these values directly and DO NOT pause to ask the user to confirm them:",
@@ -132,154 +259,163 @@ function buildInitAppPrompt(inputs: SessionInputs): string {
     "Execution notes specific to Triplane Forge:",
     "",
     "1. You are running in a git worktree on branch `forge-session-<id>` (not on `main`), so Step 1's branch safety check will pass.",
-    "2. Do NOT pause for conversational approvals (the 'wait for user to type approved' gates in Steps 3, 6, and 8). The user has delegated approval to the tool-permission system — every Bash/Write/Edit call is routed through `canUseTool` and shown to the user as a forge approval dialog. That is their checkpoint mechanism; do not ask them twice.",
-    "3. Run through the step sequence without stopping: Step 1 pre-flight → Step 2 (skip — inputs already provided) → Step 3 execution plan (just state it in text and move on) → Step 4 `bin/init.sh` → Step 5 `rewrite-docs.sh` (use the EXACT command shown above) → Step 6 `git status` + `git diff --stat` → Step 7 build verification (run web + Android + iOS in PARALLEL via concurrent Bash tool calls) → Step 8 `/feature add` loop (draft each MVP backlog spec file directly — do not pause between drafts) → Step 9 final report.",
-    "4. For Step 8, you may write `specs/features/<slug>.md` files directly via the Write tool without pausing. The forge user will review the diff after the run completes.",
-    "5. Do NOT commit. Do NOT touch `CLAUDE.md`, `LESSONS.md`, `bin/init.sh`, or `.claude/skills/**`. The worktree's working tree is your deliverable.",
+    "2. Do NOT pause for conversational approvals. Every Bash/Write/Edit call is routed through `canUseTool` and shown to the user as a forge approval dialog. That is their checkpoint mechanism; do not ask them twice.",
+    "3. Run through the step sequence without stopping: Step 1 pre-flight → Step 2 (skip — inputs already provided) → Step 3 execution plan (just state it in text and move on) → Step 4 `bin/init.sh` → Step 5 `rewrite-docs.sh` (EXACT command above) → Step 6 `git status` + `git diff --stat` → Step 7 build verification (run web + Android + iOS in PARALLEL via concurrent Bash tool calls) → Step 8 `/feature add` loop → Step 9 final report.",
+    "4. For Step 8 (the `/feature add` loop), follow this EXACT sequence for each backlog item. Do NOT deviate — the forge verifies spec-file-vs-matrix consistency at the end of Step 8 and will halt the run on any drift.",
+    "",
+    "   For each slug in IDEA.md's `features:` frontmatter list (in order):",
+    "",
+    "   a. Read `specs/features/_template.md` via the Read tool to see the canonical spec shape.",
+    "   b. Draft the spec for <slug>: fill in Description, API, Web Implementation, Mobile Implementation, Status (all boxes `- [ ]`).",
+    "   c. Write the file to `specs/features/<slug>.md` via the Write tool. Body >= ~800 bytes of real content, not a 3-line stub.",
+    "   d. **Immediately call Read** on the file to verify it landed on disk. If Read fails or returns a file <500 bytes, halt with a descriptive error.",
+    "   e. **ONLY THEN** update `PLAN.md`: flip the matrix row for <slug> so the `Spec` column changes from `🔲` to `✅`. Leave the other columns `🔲`.",
+    "   f. Move to the next slug.",
+    "",
+    "5. After the Step 8 loop, run this end-of-Step-8 verification sweep:",
+    "",
+    "   a. `ls specs/features/*.md` (strip `_template.md`).",
+    "   b. `grep -E '^\\| [a-z0-9-]+ +\\|.*\\| ✅ +\\|' PLAN.md` — rows with `Spec ✅`.",
+    "   c. Cross-reference. Any `Spec ✅` row without a file OR any file without a matching row → halt with a clear error quoting the mismatch.",
+    "",
+    "6. Post-bootstrap hardening (run AFTER Step 8, BEFORE the final report):",
+    "",
+    "   a. **`global-error.tsx`**: if `web/src/app/global-error.tsx` does NOT exist,",
+    '      create it with `"use client"`, its own `<html>/<body>` tags, an `error`',
+    "      prop, and a `reset()` button. No context-provider dependencies. Next.js 16",
+    "      prerender crashes without this file.",
+    "   b. **Clerk sign-in catch-all**: if a `sign-in/page.tsx` exists without a",
+    "      `[[...rest]]` wrapper directory, move it to `sign-in/[[...rest]]/page.tsx`.",
+    "      Same for `sign-up` if present. Clerk needs catch-all for multi-step flows.",
+    "   c. **`.env.example` audit**: grep all `process.env.*` references in `web/src/`.",
+    "      For each variable NOT already listed in `web/.env.example`, add a commented",
+    "      entry with the variable name and a short note on where to get the value.",
+    "   d. **`prisma db push`**: if a DATABASE_URL is available in `.env.local`,",
+    "      run `cd web && npx prisma db push` to sync the schema. If not, skip —",
+    "      the user will run it themselves.",
+    "",
+    "7. Do NOT commit. Do NOT touch `CLAUDE.md`, `LESSONS.md`, `bin/init.sh`, `.claude/skills/**`, or `IDEA.md`.",
     "",
     "Start with Step 1 now.",
   ].join("\n");
 }
 
-/**
- * Starts the forge worker for a session. Returns immediately — the agent
- * runs asynchronously in the same Node process. Events stream into the
- * session store and are picked up by the SSE route.
- *
- * For v1 (localhost MVP) this is fire-and-forget. v2 will use a queue.
- */
-export function startWorker(args: StartWorkerArgs): AbortController {
-  const abortController = new AbortController();
-  sessionStore.setAbortController(args.sessionId, abortController);
-  sessionStore.setStatus(args.sessionId, "bootstrapping");
-
-  // onApproval: emit approval_request SSE event, register a pending promise,
-  // and wait for the browser to POST /approvals.
-  const onApproval = async (req: ApprovalRequest): Promise<ApprovalDecision> => {
-    const approvalId = randomUUID();
-
-    const decision = await new Promise<{ approved: boolean; note?: string }>((resolve) => {
-      sessionStore.registerApproval(args.sessionId, {
-        approvalId,
-        title: req.title ?? req.displayName ?? `Run ${req.toolName}`,
-        body: req.decisionReason ?? JSON.stringify(req.input, null, 2),
-        resolve,
-      });
-
-      sessionStore.appendEvent(args.sessionId, "approval_request", {
-        approvalId,
-        toolName: req.toolName,
-        title: req.title,
-        displayName: req.displayName,
-        input: req.input,
-        blockedPath: req.blockedPath,
-        decisionReason: req.decisionReason,
-      });
-      sessionStore.setStatus(args.sessionId, "awaiting_approval");
-    });
-
-    // Back to running state once the user responded
-    sessionStore.setStatus(args.sessionId, "bootstrapping");
-
-    return decision.approved
-      ? { behavior: "allow" }
-      : {
-          behavior: "deny",
-          message:
-            decision.note && decision.note.length > 0
-              ? `Rejected by user: ${decision.note}`
-              : "Rejected by user via forge approval gate.",
-        };
-  };
-
-  const prompt = buildInitAppPrompt(args.inputs);
-
-  // Fire and forget — do NOT await this in the caller
-  void (async () => {
-    try {
-      // Optional plan-review prelude. Runs /plan-autoplan in the same worktree
-      // and produces PLAN_REVIEW.md. Sequential, not parallel — the bootstrap
-      // phase must see the completed review doc on disk. If the plan phase
-      // fails, fail the session and do NOT run /init-app.
-      if (args.planReview) {
-        const reviewResult = await runAgent({
-          cwd: args.worktreePath,
-          prompt: buildPlanAutoplanPrompt(),
-          sessionId: args.sessionId,
-          abortController,
-          onApproval,
-          permissionMode: "default",
-          maxTurns: 40,
-          maxBudgetUsd: 1.5,
-        });
-
-        if (!reviewResult.completed) {
-          sessionStore.fail(
-            args.sessionId,
-            reviewResult.errorMessage ?? "Plan review did not complete",
-          );
-          return;
-        }
-      }
-
-      const result = await runAgent({
-        cwd: args.worktreePath,
-        prompt,
-        sessionId: args.sessionId,
-        abortController,
-        onApproval,
-        // 'default' prompts for dangerous tools (Bash/Write/Edit); combined
-        // with agent-runner's default `allowedTools: ['Read', 'Glob', 'Grep']`
-        // this keeps state-changing actions gated while safe reads run free.
-        permissionMode: "default",
-        maxTurns: 80,
-        maxBudgetUsd: 3,
-      });
-
-      if (result.completed) {
-        // Optional seed-demo postlude. If the forge user ticked the
-        // "populate demo data" checkbox, run /seed-demo now to generate
-        // web/prisma/seed.ts + patch web/package.json + run bun install +
-        // optionally run `bun run db:seed`. Non-fatal: a seed failure is
-        // recorded as an error event but does NOT fail the session — the
-        // bootstrap is the primary deliverable, and the user can always
-        // re-run /seed-demo manually on the downstream project.
-        if (args.seedDemo) {
-          const seedResult = await runAgent({
-            cwd: args.worktreePath,
-            prompt: buildSeedDemoPrompt(),
-            sessionId: args.sessionId,
-            abortController,
-            onApproval,
-            permissionMode: "default",
-            maxTurns: 20,
-            maxBudgetUsd: 0.5,
-          });
-          if (!seedResult.completed) {
-            sessionStore.appendEvent(args.sessionId, "error", {
-              message: `Seed-demo failed (non-fatal): ${
-                seedResult.errorMessage ?? "unknown error"
-              }`,
-            });
-          }
-        }
-        sessionStore.setStatus(args.sessionId, "ready");
-      } else {
-        sessionStore.fail(
-          args.sessionId,
-          result.errorMessage ?? "Agent run did not complete",
-        );
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      sessionStore.fail(args.sessionId, message);
-    } finally {
-      sessionStore.setAbortController(args.sessionId, null);
-    }
-  })();
-
-  return abortController;
+export function buildSeedDemoPrompt(): string {
+  return FORGE_PROMPT_PREAMBLE + [
+    "Run /seed-demo.",
+    "",
+    "The downstream project has just been bootstrapped by /init-app. The",
+    "Prisma schema is at `web/prisma/schema.prisma`, the seed stub is at",
+    "`web/prisma/seed.ts`, and the package.json is at `web/package.json`.",
+    "",
+    "Follow the skill's steps: read the schema, overwrite the seed stub",
+    "with a Faker-powered generator scoped to DEMO_USER_ID, patch",
+    "package.json (add @faker-js/faker + prisma seed config + db:seed",
+    "script), run `bun install`, and — if DATABASE_URL is set in",
+    "`web/.env.local` or `web/.env` — run `bun run db:seed` to populate",
+    "the DB.",
+    "",
+    "This is a non-fatal postlude. If DATABASE_URL is missing, generate",
+    "the files but do NOT fail the session — just print the command the",
+    "user should run themselves.",
+    "",
+    "Do NOT touch source files outside web/prisma/seed.ts and",
+    "web/package.json. Do NOT create Attachments or call any object",
+    "storage. Do NOT modify CLAUDE.md, README.md, or any other docs.",
+    "",
+    "Start with Step 1 now.",
+  ].join("\n");
 }
+
+export function buildFeatureContinuePrompt(
+  slug: string,
+  idx: number,
+  total: number,
+): string {
+  return FORGE_PROMPT_PREAMBLE + [
+    `Run /feature continue ${slug}.`,
+    "",
+    `You are implementing feature ${idx} of ${total} in this forge session.`,
+    `The spec at \`specs/features/${slug}.md\` is drafted but all four`,
+    "implementation checkboxes (API, Web, Mobile Android, Mobile iOS) are",
+    "currently unchecked. Your job is to implement the feature end-to-end",
+    "across every platform.",
+    "",
+    "Execution:",
+    "",
+    `1. Read \`specs/features/${slug}.md\` to understand the feature's intent,`,
+    "   API contract, and per-platform implementation notes.",
+    "2. Implement the **API layer** first: create new route(s) under",
+    "   `web/src/app/api/v1/<resource>/route.ts` with zod schemas inline.",
+    "   Response shape is `{ data: T } | { error: { code, message } }` per",
+    "   PLAN.md architecture principle #5. Every route calls `requireUser()`",
+    "   from `web/src/lib/auth.ts` at the top. If new Prisma models are needed,",
+    "   add them to `web/prisma/schema.prisma` and run `bunx prisma migrate dev`.",
+    "3. Implement the **Web layer**: new page(s) under `web/src/app/[locale]/`",
+    "   following the existing `items` feature as the canonical pattern. Pages",
+    "   fetch data via `fetch('/api/v1/...')` — never direct Prisma calls.",
+    "4. Implement the **Mobile (Android) layer**: new Clean Architecture module",
+    "   at `mobile/shared/src/commonMain/kotlin/<namespace>/domain/" + slug + "/`",
+    "   (interfaces + use cases) + `.../data/" + slug + "/` (DTOs + repo impl)",
+    `   + \`mobile/composeApp/src/commonMain/kotlin/<namespace>/feature/${slug}/\``,
+    "   (Compose screens + viewmodels).",
+    "5. **Mobile (iOS) comes for free from commonMain** — verify it still builds.",
+    "",
+    "After each platform, run the build verification for that platform:",
+    "",
+    "- **Web**: `cd web && bun run build`",
+    "- **Android**: `cd mobile && ./gradlew :composeApp:assembleDebug`",
+    "- **iOS**: `cd mobile && ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64`",
+    "",
+    "Do NOT move to the next platform until the current one builds green.",
+    "",
+    "When complete, update both:",
+    "",
+    `- \`specs/features/${slug}.md\` — flip each implemented checkbox from`,
+    "  `- [ ]` to `- [x]`.",
+    `- \`PLAN.md\` — flip the matrix row columns for \`${slug}\` from 🔲 to ✅.`,
+    "",
+    "Constraints:",
+    "",
+    "- **One feature per run.** Do NOT touch other features' specs or code.",
+    "- **Do NOT commit.**",
+    "- Do NOT re-run `bin/init.sh` or `rewrite-docs.sh`.",
+    "- Do NOT modify `IDEA.md`, `CLAUDE.md`, `README.md`, `LESSONS.md`, or",
+    "  `.claude/skills/**`.",
+    "- **`.env.example` maintenance**: if your implementation adds a new",
+    "  `process.env.*` variable (e.g., an external API key, a service URL),",
+    "  add a commented entry to `web/.env.example` with the variable name",
+    "  and a short note on where to get the value. Missing env vars cause",
+    "  silent 500s with no error message — keeping `.env.example` complete",
+    "  prevents this.",
+    "",
+    "Start with Step 1 of the /feature continue workflow now.",
+  ].join("\n");
+}
+
+function buildResumePrompt(): string {
+  return FORGE_PROMPT_PREAMBLE + [
+    "You hit an error mid-run earlier while executing `/init-app` in this",
+    "worktree. Please continue from exactly where you stopped:",
+    "",
+    "1. Run `git status` and `git diff --stat` to see which files you already",
+    "   modified. This is ground truth for what's done.",
+    "2. Read any specs you already drafted under `specs/features/` to confirm",
+    "   which `/feature add` loop iteration you were on.",
+    "3. Pick up from whichever `/init-app` step was in progress. Do NOT redo",
+    "   work that's already in the working tree.",
+    "4. Run through the remaining steps to completion.",
+    "",
+    "Do NOT re-run `bin/init.sh` or `rewrite-docs.sh` if their effects are",
+    "already visible in `git status`. Do NOT `git commit` or `git reset`.",
+    "",
+    "Start by running `git status` and telling me what you find.",
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Resume worker — standalone, not part of the phase chain.
+// ---------------------------------------------------------------------------
 
 export interface StartResumeWorkerArgs {
   sessionId: string;
@@ -287,65 +423,21 @@ export interface StartResumeWorkerArgs {
 }
 
 /**
- * Builds the continuation prompt for a resumed run. The CLI's `-c` flag
- * loads the prior conversation context (all prior assistant turns, tool
- * calls, and tool results) from disk; the prompt below is appended as the
- * next user message. The agent therefore already "knows" where it was when
- * it got killed — this prompt just unblocks it and tells it the CLI
- * limitation that caused the failure has been lifted.
- */
-function buildResumePrompt(): string {
-  return [
-    "You hit an error mid-run earlier while executing `/init-app` in this",
-    "worktree (likely `error_max_budget_usd` because the forge CLI runner",
-    "used to pass `--max-budget-usd 3`; that flag has since been removed).",
-    "",
-    "Please continue from exactly where you stopped:",
-    "",
-    "1. First run `git status` and `git diff --stat` to see which files you",
-    "   already modified before the cap hit. This is ground truth for what's",
-    "   done.",
-    "2. Read any specs you already drafted under `specs/features/` to confirm",
-    "   which `/feature add` loop iteration you were on, if any.",
-    "3. Pick up from whichever `/init-app` step was in progress. Do NOT redo",
-    "   work that's already in the working tree — if `design/tokens.json`",
-    "   already has the brand color, if Kotlin packages have been renamed,",
-    "   if display strings are already rewritten, skip those steps and move",
-    "   to the next.",
-    "4. Run through the remaining steps to completion: Step 6 (`git status`",
-    "   + `git diff --stat` preview), Step 7 (build verification — web +",
-    "   Android + iOS in parallel), Step 8 (`/feature add` loop for any",
-    "   backlog items you haven't drafted yet), Step 9 (final report).",
-    "",
-    "Do NOT re-run `bin/init.sh` or `rewrite-docs.sh` if their effects are",
-    "already visible in `git status`. Do NOT `git commit` or `git reset` —",
-    "the forge user will review the diff after you finish.",
-    "",
-    "Start by running `git status` and telling me what you find.",
-  ].join("\n");
-}
-
-/**
- * Resumes a previously-failed forge session by running `claude -c` inside
+ * Resume a previously-failed forge session by running `claude -c` inside
  * the existing worktree with a continuation prompt. The prior conversation
- * state is loaded from disk by the CLI (from `~/.claude/projects/<cwd>/*.jsonl`).
+ * state is loaded from disk by the CLI.
  *
- * Fire-and-forget — returns the abort controller so the /resume route can
- * wire it up for mid-run aborts, same shape as `startWorker()`.
+ * Fire-and-forget. Returns the abort controller for the /resume route to
+ * wire up mid-run aborts.
  *
- * CLI-only: this function requires `FORGE_USE_SDK` to be unset (or explicitly
- * "0") because the SDK runner throws on `resume: true`. The /resume route
- * validates this condition before calling here.
+ * CLI-only: the SDK runner throws on `resume: true`. The /resume route
+ * validates `FORGE_USE_SDK` is unset before calling here.
  */
 export function startResumeWorker(args: StartResumeWorkerArgs): AbortController {
   const abortController = new AbortController();
   sessionStore.setAbortController(args.sessionId, abortController);
   sessionStore.setStatus(args.sessionId, "bootstrapping");
 
-  // Resume uses the same onApproval pattern as startWorker — approvals only
-  // fire on the SDK path (which throws on resume), so in practice this is
-  // dead code during resume. Kept for parity with the signature runAgent
-  // expects, so a future SDK-based resume slots in without changes.
   const onApproval = async (req: ApprovalRequest): Promise<ApprovalDecision> => {
     const approvalId = randomUUID();
     const decision = await new Promise<{ approved: boolean; note?: string }>((resolve) => {

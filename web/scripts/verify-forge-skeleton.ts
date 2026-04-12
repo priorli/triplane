@@ -52,6 +52,13 @@ async function main() {
       namespace: "com.test.recipeshare",
       displayName: "Recipe Share",
     },
+    phaseFlags: {
+      planReview: false,
+      seedDemo: false,
+      implementFeatures: false,
+      verifyBuilds: false,
+    },
+    baseUrl: "http://localhost:3000",
   });
   if (!state.sessionId || state.sessionId.length < 10) {
     throw new Error("sessionId not generated: " + state.sessionId);

@@ -80,6 +80,13 @@ async function main() {
       displayName: "Test App",
       brandColor: { L: BRAND_L, C: BRAND_C, h: BRAND_H },
     },
+    phaseFlags: {
+      planReview: false,
+      seedDemo: false,
+      implementFeatures: false,
+      verifyBuilds: false,
+    },
+    baseUrl: "http://localhost:3000",
   });
 
   const checks: Check[] = [];

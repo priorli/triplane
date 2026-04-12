@@ -49,6 +49,20 @@ async function run(
  * branch safety guard, which refuses to run on `main` in the template repo.
  * With a per-session branch, the guard passes, the worktree is free to do
  * structural rewrites, and the session's history is cleanly isolated.
+ *
+ * After creation, overlays `.claude/skills/` from the `forge` branch so the
+ * per-session worktree has access to forge-only skills like `/plan-autoplan`
+ * and `/seed-demo` (which live on the forge branch and were never merged to
+ * main — see PLAN.md Phase 10). Without this overlay, calls like
+ * `Skill({skill: "plan-autoplan"})` return `Unknown skill` and the agent
+ * falls back to writing files directly, which breaks the plan-autoplan
+ * chain's sub-skill invocation. Overlay is best-effort: if the forge branch
+ * isn't reachable or the checkout fails, log and continue — the main skills
+ * (ideate, init-app, feature, etc.) still come from `baseBranch`.
+ *
+ * Override via env var:
+ *   FORGE_SKILLS_BRANCH="forge"   # default
+ *   FORGE_SKILLS_BRANCH=""        # disable overlay
  */
 export async function createWorktree(
   sessionId: string,
@@ -75,6 +89,32 @@ export async function createWorktree(
       `git worktree add -b ${sessionBranch} failed (code ${code}): ${stderr.trim()}`,
     );
   }
+
+  // Overlay .claude/skills/ from the forge branch so the worktree has the
+  // plan-review + seed-demo + stub-external-api skills that live on forge
+  // but not on main.
+  const skillsBranch = process.env.FORGE_SKILLS_BRANCH ?? "forge";
+  if (skillsBranch) {
+    const { code: overlayCode, stderr: overlayStderr } = await run(
+      "git",
+      ["checkout", skillsBranch, "--", ".claude/skills"],
+      { cwd: path },
+    );
+    if (overlayCode !== 0) {
+      console.warn(
+        `[forge worktree] skills overlay from '${skillsBranch}' failed (code ${overlayCode}): ${overlayStderr.trim()}. ` +
+          `The worktree will still work but plan-autoplan / seed-demo / stub-external-api may be unavailable.`,
+      );
+    } else {
+      // Reset the staged overlay so `git status` in the worktree is clean.
+      // The files stay on disk — we just don't want them showing up as
+      // "staged changes" in /init-app's Step 6 git diff preview.
+      await run("git", ["reset", "HEAD", "--", ".claude/skills"], {
+        cwd: path,
+      }).catch(() => undefined);
+    }
+  }
+
   return { sessionId, path, baseBranch, sessionBranch };
 }
 

@@ -1,8 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { ideateProposedFieldsSchema } from "./schemas";
 import type {
   IdeateExtractRequest,
   IdeateExtractResponse,
-  IdeateProposedFields,
   IdeateQuestion,
 } from "./schemas";
 
@@ -35,6 +35,59 @@ When the prompt is very sparse (1 sentence, no user, no features), a good first 
 2. "What are the 3–4 most important things they should be able to do?"
 3. "Any naming preferences, or should I pick a slug for you?"
 `;
+
+/**
+ * Fix common model mistakes in the propose_fields tool input before we
+ * hand it to zod for validation. Claude tries hard to follow the schema
+ * but occasionally:
+ * - Returns `features` as a JSON-encoded string instead of a parsed array
+ * - Returns `features` wrapped in an `items` or `list` key
+ * - Returns `features[i]` as a string like "Name - description" instead
+ *   of an object with name + description keys
+ *
+ * This coerces the known-bad shapes into what the schema expects. If the
+ * model returns something we don't know how to fix, we return the input
+ * unchanged and let zod fail with a clear error message.
+ */
+function coercePropseFieldsInput(raw: unknown): unknown {
+  if (raw === null || typeof raw !== "object") return raw;
+  const obj = { ...(raw as Record<string, unknown>) };
+  const f = obj.features;
+
+  // Case 1: features is a JSON-encoded string.
+  if (typeof f === "string") {
+    try {
+      const parsed = JSON.parse(f);
+      obj.features = parsed;
+    } catch {
+      // leave it — zod will complain
+    }
+  }
+
+  // Case 2: features is wrapped: { items: [...] } or { list: [...] }.
+  if (f && typeof f === "object" && !Array.isArray(f)) {
+    const wrapper = f as Record<string, unknown>;
+    if (Array.isArray(wrapper.items)) obj.features = wrapper.items;
+    else if (Array.isArray(wrapper.list)) obj.features = wrapper.list;
+    else if (Array.isArray(wrapper.features)) obj.features = wrapper.features;
+  }
+
+  // Case 3: features[i] is a string like "Name - description".
+  if (Array.isArray(obj.features)) {
+    obj.features = obj.features.map((entry) => {
+      if (typeof entry === "string") {
+        const [name, ...rest] = entry.split(/\s*[—–-]\s*/);
+        return {
+          name: name?.trim() || "Feature",
+          description: rest.join(" - ").trim() || entry,
+        };
+      }
+      return entry;
+    });
+  }
+
+  return obj;
+}
 
 const proposeFieldsTool: Anthropic.Tool = {
   name: "propose_fields",
@@ -172,9 +225,24 @@ export async function extractIdeateFields(
   }
 
   if (toolUse.name === "propose_fields") {
+    // The model is supposed to return `input` matching the tool's JSON
+    // schema, but in practice Claude occasionally returns malformed shapes
+    // — most commonly `features` as a JSON-encoded string rather than a
+    // parsed array, or an extra wrapping key. Coerce known-bad shapes,
+    // then validate with zod. If validation fails, surface the malformed
+    // data in the error so the client can show a useful message instead
+    // of crashing later on `.features.map`.
+    const coerced = coercePropseFieldsInput(toolUse.input);
+    const parsed = ideateProposedFieldsSchema.safeParse(coerced);
+    if (!parsed.success) {
+      throw new Error(
+        `extractor returned malformed fields: ${parsed.error.message}. ` +
+          `Raw input: ${JSON.stringify(toolUse.input).slice(0, 500)}`,
+      );
+    }
     return {
       status: "ready",
-      fields: toolUse.input as IdeateProposedFields,
+      fields: parsed.data,
     };
   }
 

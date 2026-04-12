@@ -10,13 +10,94 @@ const DEFAULT_MAX_TURNS = 60;
 const DEFAULT_MAX_BUDGET_USD = 5;
 const DEFAULT_SAFE_READ_TOOLS = ["Read", "Glob", "Grep"];
 
+function compactContentBlock(
+  block: Record<string, unknown>,
+): Record<string, unknown> {
+  // Same shape as cli-runner.ts's compactContentBlock. Duplicated rather
+  // than shared to keep the two runners independent — if SDK message shape
+  // diverges from CLI stream-json shape later, each side can adapt without
+  // coupling to the other.
+  const type = typeof block.type === "string" ? block.type : "unknown";
+
+  if (type === "text") {
+    const text = String(block.text ?? "");
+    return {
+      type: "text",
+      text: text.length > 4000 ? text.slice(0, 4000) + "…" : text,
+    };
+  }
+  if (type === "thinking") {
+    const thinking = String(block.thinking ?? "");
+    return {
+      type: "thinking",
+      thinking:
+        thinking.length > 2000 ? thinking.slice(0, 2000) + "…" : thinking,
+    };
+  }
+  if (type === "tool_use") {
+    const name = typeof block.name === "string" ? block.name : "?";
+    const id = typeof block.id === "string" ? block.id : undefined;
+    let inputStr: string;
+    try {
+      inputStr = JSON.stringify(block.input ?? {}, null, 2);
+    } catch {
+      inputStr = String(block.input ?? "");
+    }
+    if (inputStr.length > 2000) {
+      inputStr = inputStr.slice(0, 2000) + "\n…";
+    }
+    return { type: "tool_use", name, id, input: inputStr };
+  }
+  if (type === "tool_result") {
+    const toolUseId =
+      typeof block.tool_use_id === "string" ? block.tool_use_id : undefined;
+    const isError = block.is_error === true;
+    let text = "";
+    const content = block.content;
+    if (typeof content === "string") {
+      text = content;
+    } else if (Array.isArray(content)) {
+      text = content
+        .map((c) => {
+          if (typeof c === "string") return c;
+          if (c && typeof c === "object" && "text" in c) {
+            return String((c as { text: unknown }).text ?? "");
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join("\n");
+    }
+    return {
+      type: "tool_result",
+      toolUseId,
+      isError,
+      text: text.length > 2000 ? text.slice(0, 2000) + "…" : text,
+    };
+  }
+  return { type, raw: JSON.stringify(block).slice(0, 500) };
+}
+
 function emitSessionEvent(sessionId: string, msg: SDKMessage) {
-  // Project SDKMessage envelopes into the session event queue.
-  // Keep payload small: strip large message bodies that aren't meant for UI.
+  // Project SDKMessage envelopes into the session event queue. For
+  // assistant/user events, we now preserve the content blocks (text, tool
+  // calls, tool results, thinking) so the UI can render the actual chat
+  // content instead of opaque "assistant turn" placeholders. Size-capped
+  // per block via compactContentBlock.
   const payload: Record<string, unknown> = { sdkMessageType: msg.type };
 
   if (msg.type === "assistant" || msg.type === "user") {
     payload.uuid = (msg as { uuid?: string }).uuid;
+    // Cast via `unknown` to dodge SDKMessage's stricter content-block
+    // union type — we treat blocks generically as Record<string, unknown>
+    // and let compactContentBlock normalize field extraction.
+    const envelope = msg as unknown as {
+      message?: { role?: string; content?: Array<Record<string, unknown>> };
+    };
+    if (envelope.message?.role) payload.role = envelope.message.role;
+    if (envelope.message?.content && Array.isArray(envelope.message.content)) {
+      payload.content = envelope.message.content.map(compactContentBlock);
+    }
   }
   if (msg.type === "result") {
     const result = msg as {

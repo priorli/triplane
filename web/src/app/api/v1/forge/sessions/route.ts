@@ -3,8 +3,9 @@ import { sessionStore } from "@/lib/forge/session-store";
 import { createWorktree, removeWorktree } from "@/lib/forge/worktree";
 import { writeIdeaMdToWorktree } from "@/lib/forge/idea-md-writer";
 import { createSessionRequestSchema } from "@/lib/forge/schemas";
-import { startWorker } from "@/lib/forge/worker";
+import { triggerNextPhase, getFirstPhase } from "@/lib/forge/phase-runner";
 import { requireForgeUser } from "@/lib/forge/auth";
+import { openEditorAtWorktree } from "@/lib/forge/editor";
 
 export async function POST(request: Request) {
   try {
@@ -16,6 +17,13 @@ export async function POST(request: Request) {
       return fail("VALIDATION_ERROR", parsed.error.message, 400);
     }
     const input = parsed.data;
+
+    // Capture the actual origin the dev server is running on (scheme + host
+    // + port) so phase-runner.ts can fire subsequent /run-phase requests
+    // at the correct URL regardless of which port Next.js picked. This
+    // persists on the session so every later phase trigger uses the same
+    // origin — no hardcoding, no env var required.
+    const baseUrl = new URL(request.url).origin;
 
     const state = sessionStore.create({
       userId,
@@ -31,6 +39,13 @@ export async function POST(request: Request) {
         displayName: input.displayName,
         brandColor: input.brandColor,
       },
+      phaseFlags: {
+        planReview: input.planReview,
+        seedDemo: input.seedDemo,
+        implementFeatures: input.implementFeatures,
+        verifyBuilds: input.verifyBuilds,
+      },
+      baseUrl,
     });
 
     let worktree;
@@ -62,19 +77,17 @@ export async function POST(request: Request) {
 
     sessionStore.setStatus(state.sessionId, "idea_written");
 
-    // Kick off the worker (fire and forget — returns immediately).
-    // The worker builds a /init-app trigger prompt from the form inputs.
-    // When planReview is true, it first runs /plan-autoplan to produce
-    // PLAN_REVIEW.md, then proceeds with /init-app. When seedDemo is true,
-    // after /init-app completes it runs /seed-demo as a non-fatal postlude
-    // to populate the downstream DB with Faker-powered demo records.
-    startWorker({
-      sessionId: state.sessionId,
-      worktreePath: worktree.path,
-      inputs: state.inputs,
-      planReview: input.planReview,
-      seedDemo: input.seedDemo,
-    });
+    // Open the worktree in the user's editor (default: VS Code). Fire and
+    // forget — failure to launch the editor never blocks the session.
+    openEditorAtWorktree(worktree.path);
+
+    // Kick off the first phase via HTTP. Each phase runs in its own
+    // Next.js route-handler context so Turbopack HMR reloads apply
+    // cleanly between hops — fixing the dev-mode staleness issue where
+    // a long-running worker IIFE would hold closures over stale
+    // worker.ts exports. See web/src/lib/forge/phase-runner.ts.
+    const firstPhase = getFirstPhase(state.phaseFlags);
+    void triggerNextPhase(state.sessionId, firstPhase);
 
     return ok(
       {

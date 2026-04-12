@@ -362,6 +362,52 @@ The `/upgrade-deps` skill (Phase 5) automates much of this.
 
 ---
 
+## Forge-discovered gotchas (Phase 10)
+
+These gotchas surfaced during Triplane Forge test runs — automated app bootstrapping where the pipeline had to build and run a complete downstream app end-to-end. They affect the template and every downstream project.
+
+### Next.js 16 requires `global-error.tsx`
+
+**What happened:** `bun run build` failed during static export with `TypeError: Cannot read properties of null (reading 'useContext')` on the `/_global-error` page.
+
+**Root cause:** Next.js 16 tries to prerender a default global error boundary during build. Without `web/src/app/global-error.tsx`, the auto-generated version calls `useContext` outside any provider (no ClerkProvider, no ThemeProvider) and crashes. Only manifests during production builds — dev mode hides it.
+
+**Fix:** Add a minimal `global-error.tsx` at the app root with `"use client"`, its own `<html>/<body>` tags, and no dependency on context providers. Baked into the template.
+
+### `NODE_ENV=development` during `next build` breaks prerendering
+
+**What happened:** `bun run build` ran with the shell's `NODE_ENV=development` inherited from the dev session. React's development-only code paths ran during prerendering, triggering extra `useContext` checks that crashed on the `/_global-error` page.
+
+**Root cause:** `next build` does not force `NODE_ENV=production`. It trusts the environment. If you ran `bun run dev` earlier in the same shell, `NODE_ENV=development` persists.
+
+**Fix:** Changed the build script to `NODE_ENV=production next build`. Baked into the template's `package.json`.
+
+### Clerk `<SignIn/>` needs a catch-all route
+
+**What happened:** Clerk's `<SignIn/>` component threw a configuration error saying the route is not a catch-all route.
+
+**Root cause:** Clerk's sign-in flow has multi-step sub-routes (`/sign-in/factor-one`, `/sign-in/sso-callback`). A static `sign-in/page.tsx` only matches `/sign-in` — the sub-routes 404.
+
+**Fix:** Move the page to `sign-in/[[...rest]]/page.tsx` (optional catch-all). Same for sign-up if present. Baked into the template.
+
+### Missing `prisma db push` before first run
+
+**What happened:** Every `/api/v1/*` endpoint returned 500 with an empty body. The `requireUser()` helper's `prisma.user.upsert()` threw because the User table didn't exist.
+
+**Root cause:** The Prisma schema existed but no migrations had been run and `prisma db push` was never called. The database was empty.
+
+**Fix:** Downstream apps forged from the template must run `prisma db push` (dev) or `prisma migrate deploy` (prod) before the first request. The `/init-app` skill should prompt for this, or verify builds should catch it.
+
+### Missing env vars cause silent 500s
+
+**What happened:** API routes returned 500 with empty response bodies, causing `"Unexpected end of JSON input"` on the client. No useful error message.
+
+**Root cause:** When `process.env.SOME_KEY` is undefined and code calls an external API or Prisma with it, the error is thrown before the route's error-handling wrapper can produce a `{ error: { code, message } }` response. The empty 500 is invisible.
+
+**Fix:** Every `process.env.*` reference should have a corresponding entry in `.env.example`. Features that add new env vars must update `.env.example` in the same PR. The `/feature continue` prompt now mandates this.
+
+---
+
 ## Build verification practices
 
 After any non-trivial change:

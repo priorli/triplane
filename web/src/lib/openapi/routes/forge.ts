@@ -54,6 +54,14 @@ const sessionRetrySchema = z
   })
   .openapi("ForgeSessionRetry");
 
+const sessionOpenEditorSchema = z
+  .object({
+    sessionId: z.string(),
+    worktreePath: z.string(),
+    opened: z.boolean(),
+  })
+  .openapi("ForgeSessionOpenEditor");
+
 const ideateExtractResponseData = z
   .union([
     z.object({
@@ -233,6 +241,39 @@ registry.registerPath({
     },
     501: {
       description: "Resume not supported on the SDK path (FORGE_USE_SDK=1)",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/v1/forge/sessions/{id}/open-editor",
+  tags: ["Forge"],
+  summary: "Open the session's worktree in the user's editor",
+  description:
+    "Spawns the editor command (default: `code`, override via `FORGE_EDITOR_COMMAND` " +
+    "env var) as a detached subprocess pointing at the worktree directory. Fails " +
+    "silently on the server if the editor binary isn't in PATH. Same helper used for " +
+    "the auto-open on session creation; exposed as an endpoint so the browser UI can " +
+    "re-open the worktree at any point during the session.",
+  security: [{ ClerkAuth: [] }],
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: {
+      description: "Editor launched",
+      content: {
+        "application/json": {
+          schema: dataResponse(sessionOpenEditorSchema, "ForgeSessionOpenEditorResponse"),
+        },
+      },
+    },
+    404: {
+      description: "Session not found",
+      content: { "application/json": { schema: errorResponseSchema } },
+    },
+    410: {
+      description: "Worktree was previously removed",
       content: { "application/json": { schema: errorResponseSchema } },
     },
   },

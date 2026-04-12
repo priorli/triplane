@@ -6,7 +6,11 @@ interface RouteContext {
 }
 
 const POLL_INTERVAL_MS = 200;
-const MAX_IDLE_MS = 60_000;
+// Long /feature continue assistant turns can legitimately run 60–120s per
+// turn on complex features. The old 60s idle timeout would close the stream
+// mid-implementation. Bumped to 5 minutes — the worker itself doesn't have
+// an idle concept, so this is purely a safety net against stuck streams.
+const MAX_IDLE_MS = 300_000;
 
 function encodeSSE(event: ForgeEvent): string {
   return [
@@ -111,11 +115,20 @@ export async function GET(request: Request, { params }: RouteContext) {
                 return;
               }
               lastId = event.id;
-              if (event.type === "done" || event.type === "error") {
-                // Flush a final sentinel then close
-                close();
-                return;
-              }
+              // NOTE: we deliberately do NOT close the stream on terminal
+              // status (ready/failed/discarded). The session can transition
+              // BACK from ready → building when the user sends a prompt via
+              // the "Continue developing" chat feature. If we closed on
+              // "ready", the client's EventSource would be dead by the time
+              // prompt events start flowing, and the chat thread would never
+              // update.
+              //
+              // Instead, the ONLY server-side close trigger is MAX_IDLE_MS
+              // (5 min of no events). When the stream closes due to idle,
+              // the browser's EventSource auto-reconnects with Last-Event-ID,
+              // replaying any events that accumulated while disconnected.
+              // This gives us a self-healing reconnect loop that works across
+              // ready → prompt → ready → prompt cycles indefinitely.
             }
           }
 

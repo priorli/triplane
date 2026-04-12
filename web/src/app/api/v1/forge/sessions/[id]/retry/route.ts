@@ -2,8 +2,9 @@ import { ok, fail } from "@/lib/api-response";
 import { sessionStore } from "@/lib/forge/session-store";
 import { createWorktree, removeWorktree, worktreeExists } from "@/lib/forge/worktree";
 import { writeIdeaMdToWorktree } from "@/lib/forge/idea-md-writer";
-import { startWorker } from "@/lib/forge/worker";
+import { triggerNextPhase, getFirstPhase } from "@/lib/forge/phase-runner";
 import { requireForgeUser } from "@/lib/forge/auth";
+import { openEditorAtWorktree } from "@/lib/forge/editor";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -24,7 +25,7 @@ interface RouteContext {
  * same inputs" is a valid use case. Non-terminal (bootstrapping, awaiting)
  * states are rejected because the old run is still going.
  */
-export async function POST(_request: Request, { params }: RouteContext) {
+export async function POST(request: Request, { params }: RouteContext) {
   try {
     await requireForgeUser();
     const { id: oldSessionId } = await params;
@@ -43,8 +44,9 @@ export async function POST(_request: Request, { params }: RouteContext) {
       );
     }
 
-    // Snapshot inputs before we tear down the old session.
+    // Snapshot inputs + phaseFlags before we tear down the old session.
     const inputs = { ...oldSession.inputs };
+    const phaseFlags = { ...oldSession.phaseFlags };
     const userId = oldSession.userId;
 
     // Tear down the old session first so name collisions can't happen and
@@ -63,13 +65,20 @@ export async function POST(_request: Request, { params }: RouteContext) {
     }
     sessionStore.remove(oldSessionId);
 
-    // Create the new session with the same inputs. This mirrors the shape
-    // of POST /api/v1/forge/sessions (see sessions/route.ts) so the two
-    // code paths stay aligned.
+    // Carry forward the old session's baseUrl (or re-derive from the
+    // retry request if missing — both hit the same Next.js server, so
+    // the origin is the same in practice).
+    const baseUrl =
+      oldSession.baseUrl || new URL(request.url).origin;
+
+    // Create the new session with the same inputs and phase flags. This
+    // mirrors POST /api/v1/forge/sessions so the two code paths stay aligned.
     const newState = sessionStore.create({
       userId,
       worktreePath: "",
       inputs,
+      phaseFlags,
+      baseUrl,
     });
 
     let worktree;
@@ -100,14 +109,15 @@ export async function POST(_request: Request, { params }: RouteContext) {
 
     sessionStore.setStatus(newState.sessionId, "idea_written");
 
-    // Retry always starts the full /init-app flow. We deliberately do NOT
-    // carry forward planReview / seedDemo flags from the old session —
-    // those were per-attempt user choices. Pure /init-app restart.
-    startWorker({
-      sessionId: newState.sessionId,
-      worktreePath: worktree.path,
-      inputs: newState.inputs,
-    });
+    // Open the fresh worktree in the user's editor, same as initial
+    // session creation. Fire and forget.
+    openEditorAtWorktree(worktree.path);
+
+    // Kick off the phase chain via HTTP — same shape as POST /sessions.
+    // Phase flags were carried forward from the old session above, so the
+    // retry runs through the same phase set the user originally selected.
+    const firstPhase = getFirstPhase(phaseFlags);
+    void triggerNextPhase(newState.sessionId, firstPhase);
 
     return ok(
       {
