@@ -30,6 +30,8 @@ export const createSessionRequestSchema = z.object({
   seedDemo: z.boolean().optional().default(false),
   implementFeatures: z.boolean().optional().default(true),
   verifyBuilds: z.boolean().optional().default(true),
+  platformTarget: z.enum(["web", "mobile", "all"]).optional().default("all"),
+  qaTest: z.boolean().optional().default(false),
 });
 
 export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;

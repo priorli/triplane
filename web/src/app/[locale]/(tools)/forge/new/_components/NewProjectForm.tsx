@@ -67,6 +67,12 @@ export function NewProjectForm() {
   const [verifyBuilds, setVerifyBuilds] = useState<boolean>(
     PHASE_TOGGLE_DEFAULTS.verifyBuilds,
   );
+  const [platformTarget, setPlatformTarget] = useState<"web" | "mobile" | "all">(
+    PHASE_TOGGLE_DEFAULTS.platformTarget,
+  );
+  const [qaTest, setQaTest] = useState<boolean>(
+    PHASE_TOGGLE_DEFAULTS.qaTest,
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +146,8 @@ export function NewProjectForm() {
           seedDemo,
           implementFeatures,
           verifyBuilds,
+          platformTarget,
+          qaTest,
         }),
       });
       const body = await res.json();
@@ -387,6 +395,10 @@ export function NewProjectForm() {
         setImplementFeatures={setImplementFeatures}
         verifyBuilds={verifyBuilds}
         setVerifyBuilds={setVerifyBuilds}
+        platformTarget={platformTarget}
+        setPlatformTarget={setPlatformTarget}
+        qaTest={qaTest}
+        setQaTest={setQaTest}
         disabled={submitting}
       />
 

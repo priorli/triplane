@@ -18,6 +18,7 @@ import {
   buildInitAppPrompt,
   buildSeedDemoPrompt,
   buildFeatureContinuePrompt,
+  buildQaTestPrompt,
 } from "./worker";
 
 // PHASE RUNNER — v0.1.3 architectural refactor.
@@ -49,7 +50,8 @@ export type PhaseName =
   | "init-app"
   | "seed-demo"
   | "implement-features"
-  | "verify-builds";
+  | "verify-builds"
+  | "qa-test";
 
 const PHASE_ORDER: PhaseName[] = [
   "plan-review",
@@ -57,13 +59,14 @@ const PHASE_ORDER: PhaseName[] = [
   "seed-demo",
   "implement-features",
   "verify-builds",
+  "qa-test",
 ];
 
 /**
  * Given the current phase and the session's phase flags, return the name
  * of the phase that should run next (or null if this is the final phase).
  * Skips phases whose flags are false. Respects the canonical order:
- *   plan-review → init-app → seed-demo → implement-features → verify-builds
+ *   plan-review → init-app → seed-demo → implement-features → verify-builds → qa-test
  */
 export function getNextPhase(
   current: PhaseName,
@@ -77,6 +80,7 @@ export function getNextPhase(
     if (next === "seed-demo" && flags.seedDemo) return next;
     if (next === "implement-features" && flags.implementFeatures) return next;
     if (next === "verify-builds" && flags.verifyBuilds) return next;
+    if (next === "qa-test" && flags.qaTest) return next;
   }
   return null;
 }
@@ -264,6 +268,9 @@ export function startPhase(phase: PhaseName, sessionId: string): void {
       break;
     case "verify-builds":
       startVerifyBuildsPhase(ctx);
+      break;
+    case "qa-test":
+      startQaTestPhase(ctx);
       break;
     default: {
       const exhaustive: never = phase;
@@ -529,7 +536,7 @@ function startImplementFeaturesPhase(ctx: PhaseContext): void {
         const featureStart = Date.now();
         const result = await runAgent({
           cwd: ctx.worktreePath,
-          prompt: buildFeatureContinuePrompt(slug, idx, slugs.length),
+          prompt: buildFeatureContinuePrompt(slug, idx, slugs.length, ctx.flags.platformTarget),
           sessionId: ctx.sessionId,
           abortController,
           onApproval,
@@ -779,6 +786,72 @@ function startVerifyBuildsPhase(ctx: PhaseContext): void {
       const message = e instanceof Error ? e.message : String(e);
       log(`threw — failing session: ${message}`);
       sessionStore.fail(ctx.sessionId, message);
+    } finally {
+      sessionStore.setAbortController(ctx.sessionId, null);
+    }
+  })();
+}
+
+// ---------------------------------------------------------------------------
+// QA test phase — Playwright browser tests against the running web app.
+// Soft-fail: QA failures emit a warning and set status to "ready", not
+// "failed". The build already passed in verify-builds; QA failures are
+// informational for freshly-generated apps.
+// ---------------------------------------------------------------------------
+
+function startQaTestPhase(ctx: PhaseContext): void {
+  const abortController = new AbortController();
+  sessionStore.setAbortController(ctx.sessionId, abortController);
+  sessionStore.setStatus(ctx.sessionId, "testing");
+  sessionStore.appendEvent(ctx.sessionId, "step_start", {
+    phase: "qa-test",
+    message:
+      "Running /qa (browser-based QA tests via Playwright)…",
+  });
+  const onApproval = makeOnApproval(ctx.sessionId);
+
+  void (async () => {
+    const log = (...parts: unknown[]) =>
+      console.log(`[phase-runner qa-test ${ctx.sessionId}]`, ...parts);
+    log("starting");
+    const start = Date.now();
+    try {
+      const result = await runAgent({
+        cwd: ctx.worktreePath,
+        prompt: buildQaTestPrompt(),
+        sessionId: ctx.sessionId,
+        abortController,
+        onApproval,
+        permissionMode: "default",
+        maxTurns: 80,
+        maxBudgetUsd: 2,
+      });
+      log(
+        `runAgent returned completed=${result.completed} turns=${result.numTurns ?? "?"} cost=${result.totalCostUsd ?? "?"}`,
+      );
+      sessionStore.appendEvent(ctx.sessionId, "step_complete", {
+        phase: "qa-test",
+        status: result.completed ? "passed" : "warning",
+        durationMs: Date.now() - start,
+        totalCostUsd: result.totalCostUsd,
+        numTurns: result.numTurns,
+        errorMessage: result.errorMessage,
+      });
+      if (!result.completed) {
+        sessionStore.appendEvent(ctx.sessionId, "error", {
+          message: `QA tests did not complete (non-fatal): ${
+            result.errorMessage ?? "unknown error"
+          }`,
+        });
+      }
+      await advanceOrFinish(ctx.sessionId, "qa-test");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      log(`threw — non-fatal, advancing: ${message}`);
+      sessionStore.appendEvent(ctx.sessionId, "error", {
+        message: `QA test phase threw (non-fatal): ${message}`,
+      });
+      await advanceOrFinish(ctx.sessionId, "qa-test");
     } finally {
       sessionStore.setAbortController(ctx.sessionId, null);
     }

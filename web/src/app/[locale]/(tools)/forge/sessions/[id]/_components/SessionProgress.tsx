@@ -859,7 +859,9 @@ function StatusPill({ status, connected }: { status: string; connected: boolean 
           ? "bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
           : status === "verifying"
             ? "bg-sky-100 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200"
-            : status === "building"
+            : status === "testing"
+              ? "bg-teal-100 text-teal-900 dark:bg-teal-950/40 dark:text-teal-200"
+              : status === "building"
               ? "bg-violet-100 text-violet-900 dark:bg-violet-950/40 dark:text-violet-200"
               : "bg-muted text-muted-foreground";
   return (
@@ -1074,7 +1076,8 @@ function EventRow({ event }: { event: ForgeEvent }) {
         phase === "plan-review" ||
         phase === "init-app" ||
         phase === "seed-demo" ||
-        phase === "prompt"
+        phase === "prompt" ||
+        phase === "qa-test"
       ) {
         const icon = payload.status === "passed" ? "✓" : "✗";
         const duration = Number(payload.durationMs ?? 0);

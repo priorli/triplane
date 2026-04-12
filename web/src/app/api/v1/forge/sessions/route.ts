@@ -44,6 +44,8 @@ export async function POST(request: Request) {
         seedDemo: input.seedDemo,
         implementFeatures: input.implementFeatures,
         verifyBuilds: input.verifyBuilds,
+        platformTarget: input.platformTarget,
+        qaTest: input.qaTest,
       },
       baseUrl,
     });

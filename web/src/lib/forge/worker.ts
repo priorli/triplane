@@ -331,49 +331,116 @@ export function buildFeatureContinuePrompt(
   slug: string,
   idx: number,
   total: number,
+  platformTarget: "web" | "mobile" | "all" = "all",
 ): string {
-  return FORGE_PROMPT_PREAMBLE + [
-    `Run /feature continue ${slug}.`,
-    "",
-    `You are implementing feature ${idx} of ${total} in this forge session.`,
-    `The spec at \`specs/features/${slug}.md\` is drafted but all four`,
-    "implementation checkboxes (API, Web, Mobile Android, Mobile iOS) are",
-    "currently unchecked. Your job is to implement the feature end-to-end",
-    "across every platform.",
-    "",
-    "Execution:",
-    "",
-    `1. Read \`specs/features/${slug}.md\` to understand the feature's intent,`,
+  const includeWeb = platformTarget === "web" || platformTarget === "all";
+  const includeMobile = platformTarget === "mobile" || platformTarget === "all";
+
+  const targetLabel =
+    platformTarget === "web"
+      ? "API + Web only (mobile deferred)"
+      : platformTarget === "mobile"
+        ? "API + Mobile only (web deferred)"
+        : "all platforms (API + Web + Mobile)";
+
+  // Build the numbered execution steps dynamically
+  const steps: string[] = [];
+  let stepNum = 1;
+
+  // Step: read spec (always)
+  steps.push(
+    `${stepNum}. Read \`specs/features/${slug}.md\` to understand the feature's intent,`,
     "   API contract, and per-platform implementation notes.",
-    "2. Implement the **API layer** first: create new route(s) under",
+  );
+  stepNum++;
+
+  // Step: API layer (always)
+  steps.push(
+    `${stepNum}. Implement the **API layer** first: create new route(s) under`,
     "   `web/src/app/api/v1/<resource>/route.ts` with zod schemas inline.",
     "   Response shape is `{ data: T } | { error: { code, message } }` per",
     "   PLAN.md architecture principle #5. Every route calls `requireUser()`",
     "   from `web/src/lib/auth.ts` at the top. If new Prisma models are needed,",
     "   add them to `web/prisma/schema.prisma` and run `bunx prisma migrate dev`.",
-    "3. Implement the **Web layer**: new page(s) under `web/src/app/[locale]/`",
-    "   following the existing `items` feature as the canonical pattern. Pages",
-    "   fetch data via `fetch('/api/v1/...')` — never direct Prisma calls.",
-    "4. Implement the **Mobile (Android) layer**: new Clean Architecture module",
-    "   at `mobile/shared/src/commonMain/kotlin/<namespace>/domain/" + slug + "/`",
-    "   (interfaces + use cases) + `.../data/" + slug + "/` (DTOs + repo impl)",
-    `   + \`mobile/composeApp/src/commonMain/kotlin/<namespace>/feature/${slug}/\``,
-    "   (Compose screens + viewmodels).",
-    "5. **Mobile (iOS) comes for free from commonMain** — verify it still builds.",
+  );
+  stepNum++;
+
+  // Step: Web layer (if target includes web)
+  if (includeWeb) {
+    steps.push(
+      `${stepNum}. Implement the **Web layer**: new page(s) under \`web/src/app/[locale]/\``,
+      "   following the existing `items` feature as the canonical pattern. Pages",
+      "   fetch data via `fetch('/api/v1/...')` — never direct Prisma calls.",
+    );
+    stepNum++;
+  }
+
+  // Step: Mobile layers (if target includes mobile)
+  if (includeMobile) {
+    steps.push(
+      `${stepNum}. Implement the **Mobile (Android) layer**: new Clean Architecture module`,
+      "   at `mobile/shared/src/commonMain/kotlin/<namespace>/domain/" + slug + "/`",
+      "   (interfaces + use cases) + `.../data/" + slug + "/` (DTOs + repo impl)",
+      `   + \`mobile/composeApp/src/commonMain/kotlin/<namespace>/feature/${slug}/\``,
+      "   (Compose screens + viewmodels).",
+    );
+    stepNum++;
+    steps.push(
+      `${stepNum}. **Mobile (iOS) comes for free from commonMain** — verify it still builds.`,
+    );
+    stepNum++;
+  }
+
+  // Build verification instructions — only for targeted platforms
+  const verifyLines: string[] = [];
+  if (includeWeb) {
+    verifyLines.push("- **Web**: `cd web && bun run build`");
+  }
+  if (includeMobile) {
+    verifyLines.push(
+      "- **Android**: `cd mobile && ./gradlew :composeApp:assembleDebug`",
+      "- **iOS**: `cd mobile && ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64`",
+    );
+  }
+
+  // Checkbox/matrix instructions — only flip implemented platforms
+  const checkboxNote =
+    platformTarget === "all"
+      ? "flip each implemented checkbox from `- [ ]` to `- [x]`."
+      : platformTarget === "web"
+        ? "flip the API and Web checkboxes to `- [x]`. Leave Mobile Android and Mobile iOS as `- [ ]`."
+        : "flip the API, Mobile Android, and Mobile iOS checkboxes to `- [x]`. Leave Web as `- [ ]`.";
+
+  const matrixNote =
+    platformTarget === "all"
+      ? `flip the matrix row columns for \`${slug}\` from 🔲 to ✅.`
+      : platformTarget === "web"
+        ? `flip API and Web columns for \`${slug}\` to ✅. Leave Android and iOS as 🔲.`
+        : `flip API, Android, and iOS columns for \`${slug}\` to ✅. Leave Web as 🔲.`;
+
+  return FORGE_PROMPT_PREAMBLE + [
+    `Run /feature continue ${slug}.`,
+    "",
+    `You are implementing feature ${idx} of ${total} in this forge session.`,
+    `Platform target: **${targetLabel}**.`,
+    `The spec at \`specs/features/${slug}.md\` is drafted but the`,
+    "implementation checkboxes are currently unchecked. Your job is to",
+    `implement the feature for the targeted platform(s).`,
+    "",
+    "Execution:",
+    "",
+    ...steps,
     "",
     "After each platform, run the build verification for that platform:",
     "",
-    "- **Web**: `cd web && bun run build`",
-    "- **Android**: `cd mobile && ./gradlew :composeApp:assembleDebug`",
-    "- **iOS**: `cd mobile && ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64`",
+    ...verifyLines,
     "",
     "Do NOT move to the next platform until the current one builds green.",
     "",
     "When complete, update both:",
     "",
-    `- \`specs/features/${slug}.md\` — flip each implemented checkbox from`,
-    "  `- [ ]` to `- [x]`.",
-    `- \`PLAN.md\` — flip the matrix row columns for \`${slug}\` from 🔲 to ✅.`,
+    `- \`specs/features/${slug}.md\` — ${checkboxNote}`,
+    `- \`PLAN.md\` — ${matrixNote}`,
     "",
     "Constraints:",
     "",
@@ -382,6 +449,9 @@ export function buildFeatureContinuePrompt(
     "- Do NOT re-run `bin/init.sh` or `rewrite-docs.sh`.",
     "- Do NOT modify `IDEA.md`, `CLAUDE.md`, `README.md`, `LESSONS.md`, or",
     "  `.claude/skills/**`.",
+    platformTarget !== "all"
+      ? `- **Do NOT implement the ${platformTarget === "web" ? "mobile" : "web"} layer** — it is deferred. Only implement the targeted platform(s).`
+      : "",
     "- **`.env.example` maintenance**: if your implementation adds a new",
     "  `process.env.*` variable (e.g., an external API key, a service URL),",
     "  add a commented entry to `web/.env.example` with the variable name",
@@ -390,6 +460,100 @@ export function buildFeatureContinuePrompt(
     "  prevents this.",
     "",
     "Start with Step 1 of the /feature continue workflow now.",
+  ].filter(Boolean).join("\n");
+}
+
+export function buildQaTestPrompt(): string {
+  return FORGE_PROMPT_PREAMBLE + [
+    "Run browser-based QA tests against the web app using Playwright.",
+    "",
+    "You are executing the /qa skill in a Triplane Forge session. The app",
+    "has been built and verified. Your job is to run the QA test scenarios",
+    "against the live web dev server and report pass/fail results.",
+    "",
+    "## Step 1 — Locate test scenarios",
+    "",
+    "Read `PLAN_REVIEW.md` at the repo root. Look for `## QA review` and its",
+    "per-feature subsections. Each subsection has a feature name, golden path",
+    "scenario, edge case 1, edge case 2, and acceptance criterion.",
+    "",
+    "If PLAN_REVIEW.md doesn't exist or has no QA section, fall back to reading",
+    "each `specs/features/*.md` (excluding `_template.md`). Synthesize scenarios",
+    "from the Description and API sections: golden path = primary workflow,",
+    "edge case 1 = empty/missing data, edge case 2 = boundary condition.",
+    "",
+    "If neither source yields scenarios, report that no scenarios were found and",
+    "recommend running `/plan-qa-review` first. Do NOT fail — just skip testing.",
+    "",
+    "## Step 2 — Install Playwright",
+    "",
+    "```bash",
+    "cd web && bun add -D @playwright/test && npx playwright install chromium",
+    "```",
+    "",
+    "If installation fails, report the error and stop.",
+    "",
+    "## Step 3 — Write playwright.config.ts",
+    "",
+    "Write `web/playwright.config.ts` with:",
+    "- testDir: `./e2e`",
+    "- timeout: 30000",
+    "- retries: 0",
+    "- baseURL from `process.env.BASE_URL || 'http://localhost:3000'`",
+    "- screenshot: `only-on-failure`",
+    "- trace: `retain-on-failure`",
+    "- chromium-only project",
+    "- outputDir: `./e2e/test-results`",
+    "",
+    "## Step 4 — Generate test files",
+    "",
+    "For each feature, write `web/e2e/<feature-slug>.spec.ts`.",
+    "",
+    "Rules:",
+    "- Use `getByRole`, `getByText`, `getByLabel` — never CSS selectors",
+    "- Each test starts from `page.goto()` — no shared state",
+    "- Auth-gated pages: detect `/sign-in` redirect, call `test.skip('requires Clerk auth')`",
+    "- Data-dependent: check if content exists, call `test.skip('needs /seed-demo')` if absent",
+    "- Never use `page.waitForTimeout()` — use `expect(locator).toBeVisible()`",
+    "",
+    "## Step 5 — Start or discover dev server",
+    "",
+    "Check if a dev server is running:",
+    "```bash",
+    "curl -s -o /dev/null -w '%{http_code}' http://localhost:3000",
+    "```",
+    "",
+    "If not responding, start one:",
+    "```bash",
+    "cd web && bun run dev &",
+    "```",
+    "Watch stdout for `http://localhost:XXXX` (up to 30s).",
+    "",
+    "## Step 6 — Run tests",
+    "",
+    "```bash",
+    "cd web && BASE_URL=<url> npx playwright test --reporter=list",
+    "```",
+    "",
+    "## Step 7 — Report results",
+    "",
+    "Parse the output. Report per-feature: [PASS]/[FAIL]/[SKIP] per scenario,",
+    "error messages on failure, screenshot paths. Summary: X passed, Y failed,",
+    "Z skipped.",
+    "",
+    "## Step 8 — Cleanup",
+    "",
+    "If you started the dev server, kill it: `kill %1 2>/dev/null || true`",
+    "",
+    "## Forge-specific constraints",
+    "",
+    "- Do NOT enter the fix loop (Step 9 of the standalone skill). In the forge",
+    "  pipeline, QA is informational only — report results and move on.",
+    "- Do NOT commit any files.",
+    "- Test files are disposable — they will be gitignored.",
+    "- Keep cost low: if scenarios are straightforward, write simple tests.",
+    "",
+    "Start with Step 1 now.",
   ].join("\n");
 }
 

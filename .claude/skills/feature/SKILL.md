@@ -94,12 +94,18 @@ If a checkbox is ✅ but the code doesn't exist, the spec is wrong — note it i
 
 ### Mode: continue
 
+**Platform target**: When invoked by the forge pipeline, the session's `platformTarget` controls which surfaces are implemented:
+- `"web"` — API + Web only. Skip mobile steps entirely.
+- `"mobile"` — API + Android + iOS only. Skip web steps entirely.
+- `"all"` — All platforms (default, current behavior).
+When invoked interactively (not via forge), implement whatever the user asks for.
+
 1. Identify which platform(s) are incomplete (verified, not just spec-claimed).
 2. Read the spec's relevant section (Web Implementation or Mobile Implementation) to understand the requirements.
 3. If the platform is **mobile**: read `mobile_plan.md` for any architecture notes that apply, especially the architecture principles in `PLAN.md` (Clean Architecture, feature-based folders, native Clerk SDK, kmp-maps).
 4. If the platform is **web**: read `web/AGENTS.md` if present for Next.js-specific rules.
 5. Use `EnterPlanMode` for non-trivial implementations — get user approval on the approach before writing code. (Skip plan mode only for tiny additions like a missing button or a one-line fix.)
-6. Implement.
+6. Implement. Only flip spec checkboxes and matrix columns for the platforms you actually implemented — leave deferred platforms unchecked.
 7. Build-verify on the target platform:
    - Web: `cd web && bun run build`
    - Mobile (Android): `cd mobile && ./gradlew :composeApp:assembleDebug`

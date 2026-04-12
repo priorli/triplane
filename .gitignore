@@ -80,3 +80,9 @@ bun.lockb.bak
 # Test coverage
 coverage/
 .nyc_output/
+
+# Playwright (generated per-worktree by /qa skill — disposable)
+web/e2e/
+web/playwright.config.ts
+web/playwright-report/
+web/test-results/

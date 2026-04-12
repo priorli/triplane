@@ -60,6 +60,12 @@ export function QuickForm() {
   const [verifyBuilds, setVerifyBuilds] = useState<boolean>(
     PHASE_TOGGLE_DEFAULTS.verifyBuilds,
   );
+  const [platformTarget, setPlatformTarget] = useState<"web" | "mobile" | "all">(
+    PHASE_TOGGLE_DEFAULTS.platformTarget,
+  );
+  const [qaTest, setQaTest] = useState<boolean>(
+    PHASE_TOGGLE_DEFAULTS.qaTest,
+  );
 
   const [answers, setAnswers] = useState<AnsweredQA[]>([]);
   const [pendingQuestions, setPendingQuestions] = useState<Question[] | null>(null);
@@ -122,6 +128,8 @@ export function QuickForm() {
           seedDemo,
           implementFeatures,
           verifyBuilds,
+          platformTarget,
+          qaTest,
         }),
       });
       if (!res.ok) {
@@ -185,6 +193,10 @@ export function QuickForm() {
       setImplementFeatures={setImplementFeatures}
       verifyBuilds={verifyBuilds}
       setVerifyBuilds={setVerifyBuilds}
+      platformTarget={platformTarget}
+      setPlatformTarget={setPlatformTarget}
+      qaTest={qaTest}
+      setQaTest={setQaTest}
       disabled={busyStage !== null}
     />
   );

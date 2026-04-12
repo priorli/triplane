@@ -14,6 +14,7 @@ const VALID_PHASES: readonly PhaseName[] = [
   "seed-demo",
   "implement-features",
   "verify-builds",
+  "qa-test",
 ] as const;
 
 function isValidPhase(value: unknown): value is PhaseName {

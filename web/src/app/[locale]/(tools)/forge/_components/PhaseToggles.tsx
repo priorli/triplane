@@ -3,6 +3,8 @@
 import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+export type PlatformTarget = "web" | "mobile" | "all";
+
 export interface PhaseTogglesProps {
   planReview: boolean;
   setPlanReview: (next: boolean) => void;
@@ -12,6 +14,10 @@ export interface PhaseTogglesProps {
   setImplementFeatures: (next: boolean) => void;
   verifyBuilds: boolean;
   setVerifyBuilds: (next: boolean) => void;
+  platformTarget: PlatformTarget;
+  setPlatformTarget: (next: PlatformTarget) => void;
+  qaTest: boolean;
+  setQaTest: (next: boolean) => void;
   disabled: boolean;
 }
 
@@ -57,6 +63,38 @@ export function PhaseToggles(props: PhaseTogglesProps) {
         onChange={props.setImplementFeatures}
         disabled={props.disabled}
       />
+      {props.implementFeatures && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Platform target</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {(
+              [
+                { value: "all", label: "All platforms", hint: "API + Web + Mobile (Android & iOS)" },
+                { value: "web", label: "Web first", hint: "API + Web only — add mobile later" },
+                { value: "mobile", label: "Mobile first", hint: "API + Mobile (Android & iOS) only — add web later" },
+              ] as const
+            ).map((opt) => (
+              <label key={opt.value} className="flex items-start gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="platformTarget"
+                  value={opt.value}
+                  checked={props.platformTarget === opt.value}
+                  onChange={() => props.setPlatformTarget(opt.value)}
+                  disabled={props.disabled}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="font-medium">{opt.label}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{opt.hint}</span>
+                </span>
+              </label>
+            ))}
+          </CardContent>
+        </Card>
+      )}
       <ToggleCard
         title={t("forge.form.verifySection")}
         label={t("forge.form.verifyLabel")}
@@ -66,6 +104,17 @@ export function PhaseToggles(props: PhaseTogglesProps) {
         onChange={props.setVerifyBuilds}
         disabled={props.disabled}
       />
+      {props.implementFeatures && (
+        <ToggleCard
+          title={t("forge.form.qaTestSection")}
+          label={t("forge.form.qaTestLabel")}
+          hint={t("forge.form.qaTestHint")}
+          note={t("forge.form.qaTestDefault")}
+          checked={props.qaTest}
+          onChange={props.setQaTest}
+          disabled={props.disabled}
+        />
+      )}
     </>
   );
 }
@@ -114,4 +163,6 @@ export const PHASE_TOGGLE_DEFAULTS = {
   seedDemo: false,
   implementFeatures: true,
   verifyBuilds: true,
-} as const;
+  platformTarget: "all" as PlatformTarget,
+  qaTest: false,
+};

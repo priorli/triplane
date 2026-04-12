@@ -57,6 +57,8 @@ async function main() {
       seedDemo: false,
       implementFeatures: false,
       verifyBuilds: false,
+      platformTarget: "all",
+      qaTest: false,
     },
     baseUrl: "http://localhost:3000",
   });

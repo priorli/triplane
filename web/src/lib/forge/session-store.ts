@@ -8,6 +8,7 @@ export type SessionStatus =
   | "building"
   | "spec_drafting"
   | "verifying"
+  | "testing"
   | "ready"
   | "failed"
   | "discarded";
@@ -57,11 +58,15 @@ export interface SessionInputs {
  * these flags from the session store and trigger the next phase via
  * `triggerNextPhase()`.
  */
+export type PlatformTarget = "web" | "mobile" | "all";
+
 export interface PhaseFlags {
   planReview: boolean;
   seedDemo: boolean;
   implementFeatures: boolean;
   verifyBuilds: boolean;
+  platformTarget: PlatformTarget;
+  qaTest: boolean;
 }
 
 export interface SessionState {

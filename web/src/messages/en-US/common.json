@@ -149,6 +149,10 @@
       "verifyLabel": "Verify builds on all three surfaces before marking ready",
       "verifyHint": "Runs web (bun run build), Android (:composeApp:assembleDebug), and iOS (:composeApp:linkDebugFrameworkIosSimulatorArm64) in parallel against the bootstrapped worktree. Direct subprocess calls — no LLM cost. Takes ~1–3 minutes depending on Gradle cache warmth.",
       "verifyDefault": "Fail-hard: if any surface fails to build, the session is marked failed and you can Resume or Retry after fixing the issue. A bootstrapped project that doesn't build is a latent bug worth catching here.",
+      "qaTestSection": "QA testing (optional)",
+      "qaTestLabel": "Run browser-based QA tests after build verification",
+      "qaTestHint": "Installs Playwright in the worktree, generates e2e test files from PLAN_REVIEW.md scenarios (or spec files), starts the dev server, and runs the tests. Adds ~$1-2 and 5-10 minutes. Web-only for v1.",
+      "qaTestDefault": "Soft-fail: QA test failures are reported as warnings, not blockers. The session still reaches 'ready'. Recommended for confidence before presenting. Skip for faster turnaround.",
       "submit": "Bootstrap project",
       "submitting": "Creating worktree…"
     },
