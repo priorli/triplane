@@ -414,6 +414,15 @@ These gotchas surfaced during Triplane Forge test runs — automated app bootstr
 
 **Fix:** The prompt builder now accepts the `namespace` as a parameter, computes the path form upfront (`namespace.replace(/\./g, "/")`), and substitutes the actual path into the prompt. The `<namespace>` placeholder is gone. Added a post-init sanity check that greps for literal `\` or `.` in directory names under `mobile/*/src/*/kotlin/`.
 
+**Sequel — same bug in shell:** `bin/init.sh` and `bin/design-tokens.sh` both produced the same `com\/priorli\/x` garbage on macOS because they used `NEW_PATH="${NAMESPACE//./\/}"`. On macOS's bash 3.2, that parameter expansion preserves the replacement's `\` literally — so every `.` becomes `\/` instead of `/`, and the resulting string is one directory name with embedded backslashes, not three nested directories. Linux bash 5 handles it correctly, which is why the bug slept through CI and only bit locally. **The portable fix is `tr`:**
+
+```sh
+NEW_PATH=$(printf '%s' "$NAMESPACE" | tr '.' '/')   # ✅ correct everywhere
+NEW_PATH="${NAMESPACE//./\/}"                       # ❌ breaks on macOS bash 3.2
+```
+
+Rule of thumb: whenever you convert a dotted namespace to a path in shell, use `tr '.' '/'`, not parameter expansion. Same for JavaScript/TypeScript — `.replace(/\./g, "/")` — never string templates with escape tricks.
+
 ### Next.js 16 `proxy.ts` requires a function declaration
 
 **What happened:** The landing page at `/` returned 404. All locale-prefixed routes (`/en-US/`, `/en-US/home`) worked fine, but the root `/` never redirected.

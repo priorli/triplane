@@ -110,7 +110,11 @@ fi
 OLD_NS="com.priorli.triplane"
 OLD_PATH="com/priorli/triplane"
 NEW_NS="$NAMESPACE"
-NEW_PATH="${NAMESPACE//./\/}"
+# Use `tr` instead of `${NAMESPACE//./\/}` — macOS bash 3.2 preserves the
+# replacement's `\` literally, producing `com\/priorli\/x` with backslashes
+# (i.e., a single directory name with embedded backslashes rather than 3
+# nested dirs). `tr` is portable and correct across bash 3/4/5.
+NEW_PATH=$(printf '%s' "$NAMESPACE" | tr '.' '/')
 
 OLD_WEB_PKG="triplane-web"
 NEW_WEB_PKG="${SLUG}-web"
