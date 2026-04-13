@@ -14,6 +14,12 @@ export const featureEntrySchema = z.object({
   description: z.string().min(1).max(280),
 });
 
+export const designStudyImageSchema = z.object({
+  name: z.string().min(1).max(120),
+  mimeType: z.string().regex(/^image\/(png|jpeg|jpg|webp)$/i, "only PNG/JPEG/WebP accepted"),
+  base64: z.string().min(1),
+});
+
 export const createSessionRequestSchema = z.object({
   productName: z.string().min(1).max(80),
   tagline: z.string().min(1).max(140),
@@ -32,6 +38,20 @@ export const createSessionRequestSchema = z.object({
   verifyBuilds: z.boolean().optional().default(true),
   platformTarget: z.enum(["web", "mobile", "all"]).optional().default("all"),
   qaTest: z.boolean().optional().default(false),
+  /**
+   * Optional /design-study prelude inputs. When provided, the session runs
+   * /design-study first in the worktree. The skill writes
+   * `design-study-result.json`; the prelude reads its `brand` OKLch triplet
+   * (if confidence is medium or high) and overrides `brandColor` before
+   * /init-app runs. Images override sliders.
+   */
+  designStudyInputs: z
+    .object({
+      images: z.array(designStudyImageSchema).max(10).optional().default([]),
+      urls: z.array(z.string().url()).max(10).optional().default([]),
+      prompt: z.string().max(4000).optional().default(""),
+    })
+    .optional(),
 });
 
 export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;
@@ -109,3 +129,47 @@ export const ideateExtractResponseSchema = z.union([
 ]);
 
 export type IdeateExtractResponse = z.infer<typeof ideateExtractResponseSchema>;
+
+// --- Design study request -------------------------------------------------
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MiB per image
+const MAX_TOTAL_IMAGE_BYTES = 30 * 1024 * 1024; // 30 MiB aggregate
+const MAX_IMAGES = 10;
+
+export const designStudyRequestSchema = z
+  .object({
+    images: z
+      .array(designStudyImageSchema)
+      .max(MAX_IMAGES, `at most ${MAX_IMAGES} images per study`)
+      .optional()
+      .default([]),
+    urls: z
+      .array(z.string().url("URLs must be absolute http(s) URLs"))
+      .max(10)
+      .optional()
+      .default([]),
+    prompt: z.string().max(4000).optional().default(""),
+  })
+  .refine(
+    (v) => v.images.length > 0 || v.urls.length > 0 || v.prompt.trim().length > 0,
+    { message: "Provide at least one of: images, urls, prompt" },
+  )
+  .refine(
+    (v) =>
+      v.images.every((img) => approxBase64Bytes(img.base64) <= MAX_IMAGE_BYTES),
+    { message: `each image must be ≤ ${MAX_IMAGE_BYTES / (1024 * 1024)} MiB` },
+  )
+  .refine(
+    (v) =>
+      v.images.reduce((sum, img) => sum + approxBase64Bytes(img.base64), 0) <=
+      MAX_TOTAL_IMAGE_BYTES,
+    { message: `total image payload must be ≤ ${MAX_TOTAL_IMAGE_BYTES / (1024 * 1024)} MiB` },
+  );
+
+export type DesignStudyRequest = z.infer<typeof designStudyRequestSchema>;
+
+/** Base64 encodes ~4 characters per 3 bytes, minus padding — close enough for a size check. */
+function approxBase64Bytes(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}

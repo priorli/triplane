@@ -6,6 +6,7 @@ import { createSessionRequestSchema } from "@/lib/forge/schemas";
 import { triggerNextPhase, getFirstPhase } from "@/lib/forge/phase-runner";
 import { requireForgeUser } from "@/lib/forge/auth";
 import { openEditorAtWorktree } from "@/lib/forge/editor";
+import { stageDesignStudyInputs } from "@/lib/forge/design-study-stage";
 
 export async function POST(request: Request) {
   try {
@@ -25,6 +26,17 @@ export async function POST(request: Request) {
     // origin — no hardcoding, no env var required.
     const baseUrl = new URL(request.url).origin;
 
+    // Presence of non-empty design-study inputs tells us to run /design-study
+    // as a prelude — the brand extracted from references overrides the
+    // slider-input brandColor if confidence is sufficient.
+    const designStudyInputs = input.designStudyInputs;
+    const hasDesignStudyPrelude = !!(
+      designStudyInputs &&
+      (designStudyInputs.images.length > 0 ||
+        designStudyInputs.urls.length > 0 ||
+        designStudyInputs.prompt.trim().length > 0)
+    );
+
     const state = sessionStore.create({
       userId,
       worktreePath: "",
@@ -39,6 +51,13 @@ export async function POST(request: Request) {
         displayName: input.displayName,
         brandColor: input.brandColor,
       },
+      designStudyInputs: hasDesignStudyPrelude
+        ? {
+            imageNames: designStudyInputs!.images.map((img) => img.name),
+            urls: designStudyInputs!.urls,
+            prompt: designStudyInputs!.prompt,
+          }
+        : undefined,
       phaseFlags: {
         planReview: input.planReview,
         seedDemo: input.seedDemo,
@@ -77,18 +96,38 @@ export async function POST(request: Request) {
       return fail("IDEA_WRITE_FAILED", message, 500);
     }
 
+    // If design-study prelude is enabled, stage the images/URLs/prompt into
+    // the worktree's `design/studies/pending/sources/` before kicking off
+    // the phase chain. The design-study phase reads from that path.
+    if (hasDesignStudyPrelude) {
+      try {
+        await stageDesignStudyInputs({
+          worktreePath: worktree.path,
+          images: designStudyInputs!.images,
+          urls: designStudyInputs!.urls,
+          prompt: designStudyInputs!.prompt,
+        });
+      } catch (e) {
+        await removeWorktree(state.sessionId);
+        sessionStore.remove(state.sessionId);
+        const message = e instanceof Error ? e.message : String(e);
+        return fail("STAGE_INPUTS_FAILED", message, 500);
+      }
+    }
+
     sessionStore.setStatus(state.sessionId, "idea_written");
 
     // Open the worktree in the user's editor (default: VS Code). Fire and
     // forget — failure to launch the editor never blocks the session.
     openEditorAtWorktree(worktree.path);
 
-    // Kick off the first phase via HTTP. Each phase runs in its own
-    // Next.js route-handler context so Turbopack HMR reloads apply
-    // cleanly between hops — fixing the dev-mode staleness issue where
-    // a long-running worker IIFE would hold closures over stale
-    // worker.ts exports. See web/src/lib/forge/phase-runner.ts.
-    const firstPhase = getFirstPhase(state.phaseFlags);
+    // Kick off the first phase via HTTP. If design-study prelude was
+    // requested, it runs before everything else; the design-study phase
+    // handler (in phase-runner.ts) reads the sidecar and calls
+    // getFirstPhase(flags) itself after completing.
+    const firstPhase = hasDesignStudyPrelude
+      ? "design-study"
+      : getFirstPhase(state.phaseFlags);
     void triggerNextPhase(state.sessionId, firstPhase);
 
     return ok(

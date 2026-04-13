@@ -10,6 +10,15 @@ import {
   PhaseToggles,
   PHASE_TOGGLE_DEFAULTS,
 } from "../../_components/PhaseToggles";
+import {
+  DesignReferenceInputs,
+  filesToBase64Payload,
+  parseUrls,
+  MAX_IMAGE_BYTES,
+  MAX_IMAGES,
+} from "@/components/forge/design-reference-inputs";
+
+const MAX_TOTAL_IMAGE_BYTES = 30 * 1024 * 1024;
 
 interface Question {
   id: string;
@@ -72,6 +81,10 @@ export function QuickForm() {
   const [pendingAnswers, setPendingAnswers] = useState<Record<string, string>>({});
   const [rationale, setRationale] = useState<string | null>(null);
 
+  const [designFiles, setDesignFiles] = useState<File[]>([]);
+  const [designUrls, setDesignUrls] = useState("");
+  const [designPrompt, setDesignPrompt] = useState("");
+
   const [busyStage, setBusyStage] = useState<null | "extracting" | "submitting">(null);
   const [error, setError] = useState<string | null>(null);
   const [proposed, setProposed] = useState<ProposedFields | null>(null);
@@ -118,6 +131,35 @@ export function QuickForm() {
     setBusyStage("submitting");
     setError(null);
     try {
+      if (designFiles.some((f) => f.size > MAX_IMAGE_BYTES)) {
+        throw new Error(t("forge.design.form.validation.tooLarge"));
+      }
+      const totalDesignBytes = designFiles.reduce((sum, f) => sum + f.size, 0);
+      if (totalDesignBytes > MAX_TOTAL_IMAGE_BYTES) {
+        throw new Error(t("forge.design.form.validation.totalTooLarge"));
+      }
+      if (designFiles.length > MAX_IMAGES) {
+        throw new Error(t("forge.design.form.validation.tooManyImages"));
+      }
+
+      const parsedDesignUrls = parseUrls(designUrls);
+      if (parsedDesignUrls === null) {
+        throw new Error(t("forge.design.form.validation.invalidUrl"));
+      }
+
+      const hasDesignReferences =
+        designFiles.length > 0 ||
+        parsedDesignUrls.length > 0 ||
+        designPrompt.trim().length > 0;
+
+      const designStudyInputs = hasDesignReferences
+        ? {
+            images: await filesToBase64Payload(designFiles),
+            urls: parsedDesignUrls,
+            prompt: designPrompt.trim(),
+          }
+        : undefined;
+
       const res = await fetch("/api/v1/forge/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -130,6 +172,7 @@ export function QuickForm() {
           verifyBuilds,
           platformTarget,
           qaTest,
+          designStudyInputs,
         }),
       });
       if (!res.ok) {
@@ -242,6 +285,26 @@ export function QuickForm() {
                   enable: t("forge.form.brandEnable"),
                   section: t("forge.form.brandSection"),
                 }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("forge.form.designReferencesSection")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {t("forge.form.designReferencesHint")}
+              </p>
+              <DesignReferenceInputs
+                files={designFiles}
+                urls={designUrls}
+                prompt={designPrompt}
+                onFilesChange={setDesignFiles}
+                onUrlsChange={setDesignUrls}
+                onPromptChange={setDesignPrompt}
+                disabled={busyStage !== null}
               />
             </CardContent>
           </Card>

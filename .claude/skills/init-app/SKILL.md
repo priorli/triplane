@@ -171,6 +171,62 @@ Wait for explicit approval.
 
 ## Step 7 — Build verification (parallel)
 
+### Pre-flight invariant check (before spawning builds)
+
+`web/src/app/global-error.tsx` is a load-bearing Next.js 16 invariant: without
+it (or if it imports any context provider) `next build` crashes during the
+prerender of `/_global-error` with a `useContext null` error. The forge runner
+has a runtime auto-repair (`web/src/lib/forge/verify-global-error.ts`) that
+catches this before `bun run build`, but `/init-app` runs invoked outside the
+forge (standalone, direct CLI) don't get that safety net. Verify the file
+before spawning builds:
+
+```bash
+# Must exist, must have "use client", must NOT import any context providers.
+test -f web/src/app/global-error.tsx \
+  && grep -q '^"use client";' web/src/app/global-error.tsx \
+  && ! grep -qE 'from ["'"'"'](@clerk/|next-intl|next-themes|.*Provider)' web/src/app/global-error.tsx \
+  || {
+    echo "⚠️  global-error.tsx missing or malformed — restoring canonical content."
+    cat > web/src/app/global-error.tsx <<'EOF'
+"use client";
+
+export default function GlobalError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  return (
+    <html>
+      <body>
+        <div style={{ padding: "2rem", fontFamily: "system-ui, sans-serif" }}>
+          <h2>Something went wrong</h2>
+          <p style={{ color: "#666" }}>{error.message}</p>
+          <button
+            onClick={() => reset()}
+            style={{
+              marginTop: "1rem",
+              padding: "0.5rem 1rem",
+              cursor: "pointer",
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      </body>
+    </html>
+  );
+}
+EOF
+  }
+```
+
+The canonical content is also stored at `web/src/lib/forge/canonical/global-error.tsx.ts` as `CANONICAL_GLOBAL_ERROR_TSX` — keep the two in sync when edits land. If restoration was needed, note it in the Step 7 report.
+
+### Run builds
+
 Single assistant turn, three parallel Bash calls:
 
 ```

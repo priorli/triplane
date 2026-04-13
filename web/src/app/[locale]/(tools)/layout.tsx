@@ -25,6 +25,17 @@ export default async function ToolsLayout({
             <Link href="/forge/new" className="text-lg font-semibold">
               {t("forge.brandName")}
             </Link>
+            <nav className="flex items-center gap-4 text-sm">
+              <Link href="/forge/new" className="text-muted-foreground hover:text-foreground">
+                {t("forge.nav.new")}
+              </Link>
+              <Link href="/forge/quick" className="text-muted-foreground hover:text-foreground">
+                {t("forge.nav.quick")}
+              </Link>
+              <Link href="/forge/design" className="text-muted-foreground hover:text-foreground">
+                {t("forge.nav.design")}
+              </Link>
+            </nav>
             <span className="text-xs text-muted-foreground uppercase tracking-wider">
               {t("forge.devModeLabel")}
             </span>

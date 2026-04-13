@@ -52,6 +52,20 @@ export interface SessionInputs {
 }
 
 /**
+ * Design-study session inputs, written into the worktree under
+ * `design/studies/pending/sources/` before the skill runs. `imageNames`
+ * references files relative to that directory; the skill reads them via
+ * its normal vision pipeline.
+ */
+export interface DesignStudyInputs {
+  imageNames: string[];
+  urls: string[];
+  prompt: string;
+}
+
+export type SessionType = "bootstrap" | "design-study";
+
+/**
  * Which forge phases the user enabled when the session was created. Stored
  * on the session so that each phase can look up its own successor without
  * needing a long-lived worker closure — any HTTP request handler can read
@@ -73,11 +87,29 @@ export interface SessionState {
   sessionId: string;
   userId: string;
   worktreePath: string;
+  /**
+   * Discriminator between the bootstrap pipeline (plan-review → init-app →
+   * seed-demo → …) and the design-study single-phase flow. Bootstrap is the
+   * default for backward compatibility.
+   */
+  type: SessionType;
   inputs: SessionInputs;
+  /**
+   * Design-study-specific inputs. Populated only when `type === "design-study"`.
+   */
+  designStudyInputs?: DesignStudyInputs;
+  /**
+   * Timestamped directory name under `design/studies/` where the prelude's
+   * output landed (e.g. `20260413T123045`). Set by the design-study phase
+   * handler after it renames `pending/` → `<timestamp>/`; consumed by the
+   * downstream `design-apply` phase to locate `design-study-result.json`.
+   */
+  designStudyTimestampDir?: string;
   /**
    * The per-session phase toggles the user selected when creating the
    * forge session. Read by phase-runner.ts's `getNextPhase()` to chain
-   * the forge pipeline HTTP-hop by HTTP-hop.
+   * the forge pipeline HTTP-hop by HTTP-hop. Ignored for design-study sessions
+   * (which have a fixed single-phase pipeline).
    */
   phaseFlags: PhaseFlags;
   /**
@@ -110,6 +142,8 @@ class SessionStore {
     inputs: SessionInputs;
     phaseFlags: PhaseFlags;
     baseUrl: string;
+    type?: SessionType;
+    designStudyInputs?: DesignStudyInputs;
   }): SessionState {
     const sessionId = randomUUID();
     const now = new Date();
@@ -117,7 +151,9 @@ class SessionStore {
       sessionId,
       userId: args.userId,
       worktreePath: args.worktreePath,
+      type: args.type ?? "bootstrap",
       inputs: args.inputs,
+      designStudyInputs: args.designStudyInputs,
       phaseFlags: args.phaseFlags,
       baseUrl: args.baseUrl,
       status: "created",

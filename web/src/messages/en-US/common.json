@@ -153,6 +153,8 @@
       "qaTestLabel": "Run browser-based QA tests after build verification",
       "qaTestHint": "Installs Playwright in the worktree, generates e2e test files from PLAN_REVIEW.md scenarios (or spec files), starts the dev server, and runs the tests. Adds ~$1-2 and 5-10 minutes. Web-only for v1.",
       "qaTestDefault": "Soft-fail: QA test failures are reported as warnings, not blockers. The session still reaches 'ready'. Recommended for confidence before presenting. Skip for faster turnaround.",
+      "designReferencesSection": "Design references (optional)",
+      "designReferencesHint": "Drop reference screenshots, paste URLs, or describe the vibe. /design-study runs first; if it returns a confident brand suggestion, it overrides the slider above before /init-app uses --brand-color.",
       "submit": "Bootstrap project",
       "submitting": "Creating worktree…"
     },
@@ -163,6 +165,38 @@
       "placeholderBody1": "The worktree was created at the session ID above and IDEA.md was written with your frontmatter + prose body. Check the tmp path in the worktree output.",
       "placeholderBody2": "The Agent SDK integration lands in sub-phase 9.2 + 9.3 + 9.4. For now this page is a stub.",
       "placeholderBody3": "To verify: cd /tmp/triplane-forge/<session-id> and cat IDEA.md."
+    },
+    "nav": {
+      "new": "New",
+      "quick": "Quick",
+      "design": "Design"
+    },
+    "design": {
+      "title": "Design",
+      "subtitle": "Preview the template's design system below, and drop reference images to propose an evolution via /design-study.",
+      "previewHeading": "Current design system",
+      "studyHeading": "Study new references",
+      "studySubtitle": "Drop reference screenshots, paste a few URLs, or describe the vibe you're chasing. The /design-study skill will analyze everything and write a proposal to a new worktree.",
+      "form": {
+        "imagesLabel": "Reference images",
+        "imagesHint": "PNG / JPEG / WebP — up to 10 images, 10 MiB each, 30 MiB total.",
+        "imagesDropHint": "Drag and drop images here, or click to choose.",
+        "urlsLabel": "Reference URLs",
+        "urlsHint": "One URL per line. The skill will try to screenshot them with Playwright when available.",
+        "urlsPlaceholder": "https://linear.app\nhttps://stripe.com",
+        "promptLabel": "Describe the vibe",
+        "promptPlaceholder": "Dense, monochromatic, Linear-like. Sharp corners, tight spacing, serif accents.",
+        "submit": "Study references",
+        "submitting": "Creating worktree…",
+        "validation": {
+          "tooLarge": "Image exceeds 10 MiB cap.",
+          "totalTooLarge": "Total image payload exceeds 30 MiB cap.",
+          "noInputs": "Provide at least one of: images, URLs, or prose prompt.",
+          "invalidUrl": "URL must be an absolute http(s) URL.",
+          "tooManyImages": "At most 10 images per study."
+        }
+      },
+      "removeImage": "Remove"
     }
   },
   "metadata": {

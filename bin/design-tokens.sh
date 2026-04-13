@@ -87,6 +87,19 @@ BRAND_L=$(as_double "$(jq -r '.brand.L' "$TOKENS_JSON")")
 BRAND_C=$(as_double "$(jq -r '.brand.C' "$TOKENS_JSON")")
 BRAND_H=$(as_double "$(jq -r '.brand.h' "$TOKENS_JSON")")
 
+# --- Optional accent color (schema extension) -------------------------------
+# `accent` is an optional second brand hue for emphasis/CTA variants.
+# If present in tokens.json, the generator emits a real accent color in CSS
+# and maps it to Material 3's `secondary` / `onSecondary` slots in Compose.
+# If absent, the CSS aliases `--color-accent` to `--muted` (shadcn default)
+# and Compose's `secondary` falls back to Material 3's default derivation.
+HAS_ACCENT=$(jq 'has("accent")' "$TOKENS_JSON")
+if [[ "$HAS_ACCENT" == "true" ]]; then
+    ACCENT_L=$(as_double "$(jq -r '.accent.L' "$TOKENS_JSON")")
+    ACCENT_C=$(as_double "$(jq -r '.accent.C' "$TOKENS_JSON")")
+    ACCENT_H=$(as_double "$(jq -r '.accent.h' "$TOKENS_JSON")")
+fi
+
 SANS_FAMILY=$(jq -r '.typography.fontFamily.sans' "$TOKENS_JSON")
 MONO_FAMILY=$(jq -r '.typography.fontFamily.mono' "$TOKENS_JSON")
 
@@ -109,6 +122,17 @@ brand_foreground_l() {
 }
 BRAND_FG_L_LIGHT=$(brand_foreground_l "$BRAND_L")
 BRAND_FG_L_DARK=$(brand_foreground_l "$BRAND_L_DARK")
+
+if [[ "$HAS_ACCENT" == "true" ]]; then
+    ACCENT_L_DARK=$(awk -v l="$ACCENT_L" 'BEGIN {
+        v = 1.0 - l + 0.7
+        if (v < 0)    v = 0
+        if (v > 0.97) v = 0.97
+        printf "%.4f", v
+    }')
+    ACCENT_FG_L_LIGHT=$(brand_foreground_l "$ACCENT_L")
+    ACCENT_FG_L_DARK=$(brand_foreground_l "$ACCENT_L_DARK")
+fi
 
 # --- OKLch string helper -----------------------------------------------------
 oklch() {
@@ -143,6 +167,13 @@ DESTRUCTIVE_LIGHT="oklch(0.577 0.245 27.325)"
 DESTRUCTIVE_DARK="oklch(0.704 0.191 22.216)"
 DESTRUCTIVE_FG_LIGHT=$(oklch 0.985 0 0)
 DESTRUCTIVE_FG_DARK=$(oklch  0.985 0 0)
+
+if [[ "$HAS_ACCENT" == "true" ]]; then
+    ACCENT_LIGHT=$(oklch "$ACCENT_L"      "$ACCENT_C" "$ACCENT_H")
+    ACCENT_DARK=$(oklch  "$ACCENT_L_DARK" "$ACCENT_C" "$ACCENT_H")
+    ACCENT_FG_LIGHT=$(oklch "$ACCENT_FG_L_LIGHT" 0 0)
+    ACCENT_FG_DARK=$(oklch  "$ACCENT_FG_L_DARK"  0 0)
+fi
 
 # --- Read the typography scale as shell-friendly strings --------------------
 # jq -r outputs one line per scale entry: "<name> <size> <weight> <lineHeight>"
@@ -273,6 +304,29 @@ cat <<EOF
   --destructive-foreground: $DESTRUCTIVE_FG_DARK;
 }
 EOF
+
+# Optional accent color — emit additional @theme inline alias override +
+# :root / .dark blocks only when .accent is present in tokens.json. Appending
+# extra CSS rules is safe: later :root/.dark selectors merge with earlier ones,
+# and the @theme override wins via source order.
+if [[ "$HAS_ACCENT" == "true" ]]; then
+cat <<EOF
+
+/* Accent (schema extension — present when tokens.json has an .accent triplet) */
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+}
+:root {
+  --accent: $ACCENT_LIGHT;
+  --accent-foreground: $ACCENT_FG_LIGHT;
+}
+.dark {
+  --accent: $ACCENT_DARK;
+  --accent-foreground: $ACCENT_FG_DARK;
+}
+EOF
+fi
 } > "$WEB_OUT"
 
 # --- Emit DesignTokens.kt ---------------------------------------------------
@@ -358,7 +412,9 @@ internal fun colorFromOklch(l: Double, c: Double, h: Double): Color =
 
 EOF
 
-# Emit color schemes — light + dark
+# Emit color schemes — light + dark. Split into pre-error / optional accent /
+# error-to-close so we can inject M3 `secondary` / `onSecondary` slots from
+# the optional `accent` token without duplicating the heredoc.
 cat <<EOF
 // --- Color schemes -----------------------------------------------------------
 
@@ -372,6 +428,14 @@ internal val LightColorScheme = lightColorScheme(
     surfaceVariant = colorFromOklch(0.97, 0.0, 0.0),
     onSurfaceVariant = colorFromOklch(0.556, 0.0, 0.0),
     outline = colorFromOklch(0.922, 0.0, 0.0),
+EOF
+if [[ "$HAS_ACCENT" == "true" ]]; then
+cat <<EOF
+    secondary = colorFromOklch($ACCENT_L, $ACCENT_C, $ACCENT_H),
+    onSecondary = colorFromOklch($ACCENT_FG_L_LIGHT, 0.0, 0.0),
+EOF
+fi
+cat <<EOF
     error = colorFromOklch(0.577, 0.245, 27.325),
     onError = colorFromOklch(0.985, 0.0, 0.0),
 )
@@ -386,6 +450,14 @@ internal val DarkColorScheme = darkColorScheme(
     surfaceVariant = colorFromOklch(0.269, 0.0, 0.0),
     onSurfaceVariant = colorFromOklch(0.708, 0.0, 0.0),
     outline = colorFromOklch(0.269, 0.0, 0.0),
+EOF
+if [[ "$HAS_ACCENT" == "true" ]]; then
+cat <<EOF
+    secondary = colorFromOklch($ACCENT_L_DARK, $ACCENT_C, $ACCENT_H),
+    onSecondary = colorFromOklch($ACCENT_FG_L_DARK, 0.0, 0.0),
+EOF
+fi
+cat <<EOF
     error = colorFromOklch(0.704, 0.191, 22.216),
     onError = colorFromOklch(0.985, 0.0, 0.0),
 )
@@ -581,6 +653,28 @@ jq -n \
         "radius":  $radius,
         "spacing": $spacing
     }' > "$DTCG_OUT"
+
+# Optional accent — second pass that merges accent entries into both color
+# blocks. Kept separate to keep the base jq expression narrow and to make the
+# accent path trivially no-op when .accent is absent.
+if [[ "$HAS_ACCENT" == "true" ]]; then
+    jq \
+        --arg al  "$ACCENT_LIGHT" \
+        --arg ad  "$ACCENT_DARK" \
+        --arg afl "$ACCENT_FG_LIGHT" \
+        --arg afd "$ACCENT_FG_DARK" \
+        '
+        .color.light += {
+            "accent":           {"$value": $al,  "$type": "color", "$description": "Accent brand color (schema extension)"},
+            "accentForeground": {"$value": $afl, "$type": "color"}
+        }
+        | .color.dark += {
+            "accent":           {"$value": $ad,  "$type": "color"},
+            "accentForeground": {"$value": $afd, "$type": "color"}
+        }
+        ' "$DTCG_OUT" > "$DTCG_OUT.tmp"
+    mv "$DTCG_OUT.tmp" "$DTCG_OUT"
+fi
 
 echo "✓ Regenerated design tokens"
 echo "  → $WEB_OUT"

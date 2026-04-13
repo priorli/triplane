@@ -4,7 +4,11 @@ import {
   type ApprovalRequest,
   type ApprovalDecision,
 } from "./agent-runner";
-import { sessionStore, type SessionInputs } from "./session-store";
+import {
+  sessionStore,
+  type SessionInputs,
+  type DesignStudyInputs,
+} from "./session-store";
 
 // BUILD MARKER: printed on module load so you can verify the dev server
 // is running the latest code. If you don't see this in your `bun run dev`
@@ -576,6 +580,60 @@ export function buildQaTestPrompt(): string {
     "- Keep cost low: if scenarios are straightforward, write simple tests.",
     "",
     "Start with Step 1 now.",
+  ].join("\n");
+}
+
+export function buildDesignStudyPrompt(inputs: DesignStudyInputs): string {
+  const sourcesDir = "design/studies/pending/sources";
+  const imageList = inputs.imageNames.length > 0
+    ? inputs.imageNames.map((n) => `  - ${sourcesDir}/${n}`).join("\n")
+    : "  (none — URL-only study)";
+  const urlList = inputs.urls.length > 0
+    ? inputs.urls.map((u) => `  - ${u}`).join("\n")
+    : "  (none)";
+  const prosePrompt = inputs.prompt.trim().length > 0
+    ? inputs.prompt.trim()
+    : "(no prose prompt provided — infer intent from the references)";
+
+  return FORGE_PROMPT_PREAMBLE + [
+    "You are running a design study for a Triplane project. A Forge user has",
+    "dropped reference images, URLs, and a prose prompt into the worktree.",
+    "Use the `/design-study` skill — read `.claude/skills/design-study/SKILL.md`",
+    "to load its full instructions — and produce a `DESIGN_STUDY.md` report.",
+    "",
+    "## Inputs",
+    "",
+    "Reference images (already written to the worktree):",
+    imageList,
+    "",
+    "Reference URLs (capture screenshots via Playwright if available, otherwise",
+    "skip with a note; do NOT fail if Playwright isn't installed):",
+    urlList,
+    "",
+    "Prose prompt (the user's description of the desired vibe / direction):",
+    "",
+    prosePrompt,
+    "",
+    "## Run mode",
+    "",
+    "**Read-only.** Do NOT apply any proposed changes. Do NOT edit",
+    "`design/tokens.json`, `design/tokens.schema.json`, `bin/design-tokens.sh`,",
+    "or any component file. The user will decide whether to apply via a later",
+    "step (not in this phase).",
+    "",
+    "## Output location",
+    "",
+    "Write the report to `design/studies/pending/DESIGN_STUDY.md` (the forge",
+    "runner will rename `pending/` to a timestamped directory after you",
+    "finish). Source images are already in `pending/sources/`.",
+    "",
+    "Include the sections the skill requires: Summary, Token deltas (with",
+    "confidence notes on OKLch estimates — ±0.02 L, ±5° h), Schema extensions",
+    "(if references imply tokens the bespoke schema can't express), Component",
+    "gaps, and Accessibility spot-checks.",
+    "",
+    "Start now by reading `.claude/skills/design-study/SKILL.md` and the inputs",
+    "under `design/studies/pending/sources/`.",
   ].join("\n");
 }
 

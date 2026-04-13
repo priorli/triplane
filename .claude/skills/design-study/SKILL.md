@@ -156,9 +156,63 @@ Other common extensions (draft similar plans if the analysis calls for them):
 - **Elevation tokens** (`elevation.low/medium/high`) — needed if references are shadow-heavy (e.g. Material 3 outdoor, Apple-like depth).
 - **A new typography scale slot** (e.g. `displayXL` for hero text larger than `displayLarge`).
 
-## Step 6 — Write DESIGN_STUDY.md
+## Step 6 — Write DESIGN_STUDY.md + machine-readable sidecar
 
-Produce `design/studies/<timestamp>/DESIGN_STUDY.md` with these sections (in order):
+Produce **two** files alongside `sources/` in the study directory:
+
+1. **`design/studies/<timestamp>/design-study-result.json`** — a small
+   machine-readable sidecar consumed by the forge runner's `design-apply`
+   phase (which runs `/design-study` as a prelude to feature implementation,
+   applies every delta here to `design/tokens.json`, regenerates CSS + Kotlin,
+   and pauses for human approval before features get built). Standalone users
+   can ignore it.
+
+   Shape:
+   ```json
+   {
+     "brand":       { "L": 0.57, "C": 0.18, "h": 142 },
+     "fontFamily":  { "sans": "Inter", "mono": "JetBrains Mono" },
+     "radius":      { "sm": 3, "md": 6, "lg": 10, "xl": 14 },
+     "schemaExtensions": [
+       {
+         "type": "accent-color",
+         "value": { "L": 0.60, "C": 0.15, "h": 290 },
+         "rationale": "References consistently show a distinct secondary brand color used for CTAs and highlights."
+       }
+     ],
+     "confidence": "high"
+   }
+   ```
+
+   Every top-level field is **optional** — emit only what you're confident
+   enough to recommend. The forge `design-apply` phase applies each field
+   independently: missing fields leave the existing template value untouched.
+
+   - `brand` — single proposed OKLch triplet, shape matches `design/tokens.json`.
+     Omit if references don't support any brand recommendation (e.g. typography-only study).
+   - `fontFamily` — `sans` and/or `mono` font names. Match against common
+     webfonts (Inter, Geist, Manrope, DM Sans, SF Pro, Nunito) and mono
+     candidates (Geist Mono, JetBrains Mono, Fira Code, IBM Plex Mono).
+     Emit only the ones you're confident about; partial objects are fine.
+     Note: the bootstrap flow doesn't automatically download new font
+     binaries — the prelude only updates the font-name in `tokens.json`
+     and the user has to drop the matching TTFs into `mobile/.../font/`
+     afterward. Document this in the DESIGN_STUDY.md for any font swap.
+   - `radius` — partial `{ sm, md, lg, xl }` with integer px values.
+     Emit only slots you want to change.
+   - `schemaExtensions` — array of extension objects. v1 supports one type:
+     `"accent-color"` (adds a second brand hue mapped to Material 3's
+     `secondary` slot and a new `--accent` / `--accent-foreground` CSS
+     token pair). Future types (`motion`, `elevation`) are reserved.
+   - `confidence` is overall (`"low" | "medium" | "high"`) — reflects
+     cross-reference agreement. The `design-apply` phase may refuse to
+     apply a `"low"` confidence recommendation or require explicit approval.
+
+   Write with the standard `Write` tool. If no recommendation is
+   possible at all (e.g. the references don't constrain anything), skip
+   the file entirely — the `design-apply` phase no-ops gracefully.
+
+2. **`design/studies/<timestamp>/DESIGN_STUDY.md`** with these sections (in order):
 
 ```markdown
 # Design study — <short title>
@@ -271,7 +325,7 @@ This skill's job is to say *"based on the references, here's what's missing from
 ## Files this skill touches
 
 - **Reads:** `design/tokens.json`, `design/tokens.schema.json` (if present), `bin/design-tokens.sh`, `web/src/components/ui/*.tsx`, `web/package.json` (to check Playwright availability), user-supplied images, user-supplied URLs (via Playwright), Figma API (via `FIGMA_TOKEN`).
-- **Creates (default mode):** `design/studies/<timestamp>/sources/**` (gitignored), `design/studies/<timestamp>/DESIGN_STUDY.md` (committed).
+- **Creates (default mode):** `design/studies/<timestamp>/sources/**` (gitignored), `design/studies/<timestamp>/DESIGN_STUDY.md` (committed), `design/studies/<timestamp>/design-study-result.json` (committed, optional — only when brand is recommendable).
 - **Writes (--apply mode only, with approval):** `design/tokens.json`, `design/tokens.schema.json`, `bin/design-tokens.sh`, `bin/tokens-pull.sh`, `design/tokens.dtcg.json` (via `design-tokens.sh`), `web/src/app/generated/tokens.css` (via `design-tokens.sh`), `mobile/composeApp/src/commonMain/kotlin/<ns>/common/theme/DesignTokens.kt` (via `design-tokens.sh`).
 - **Never edits:** `bin/init.sh`, feature code under `web/src/app/**` or `mobile/composeApp/src/commonMain/kotlin/**/feature/**`. Component gaps are suggestions, not actions — the user dispatches to `/scaffold` or `/feature add` to build them.
 

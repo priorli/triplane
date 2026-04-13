@@ -8,10 +8,12 @@ import {
   type ApprovalDecision,
   type OnApproval,
 } from "./agent-runner";
+import { readFile, rename } from "node:fs/promises";
 import {
   sessionStore,
   type PhaseFlags,
   type SessionInputs,
+  type DesignStudyInputs,
 } from "./session-store";
 import {
   buildPlanAutoplanPrompt,
@@ -19,7 +21,17 @@ import {
   buildSeedDemoPrompt,
   buildFeatureContinuePrompt,
   buildQaTestPrompt,
+  buildDesignStudyPrompt,
 } from "./worker";
+import { ensureGlobalErrorValid } from "./verify-global-error";
+import {
+  readSidecar,
+  applySidecarToTokensJson,
+  snapshotTokens,
+  restoreTokens,
+  startWebDevServer,
+  stopDevServer,
+} from "./design-apply";
 
 // PHASE RUNNER — v0.1.3 architectural refactor.
 //
@@ -51,11 +63,19 @@ export type PhaseName =
   | "seed-demo"
   | "implement-features"
   | "verify-builds"
-  | "qa-test";
+  | "qa-test"
+  | "design-study"
+  | "design-apply";
 
+// Bootstrap pipeline. `design-study` is a standalone single-phase flow for
+// the /forge/design page; when run as a prelude on a bootstrap session it
+// emits the sidecar and chains into `design-apply`, which applies the
+// sidecar to tokens, spins up a dev server, and pauses for approval before
+// `implement-features` so features get built against the studied design.
 const PHASE_ORDER: PhaseName[] = [
   "plan-review",
   "init-app",
+  "design-apply",
   "seed-demo",
   "implement-features",
   "verify-builds",
@@ -71,12 +91,14 @@ const PHASE_ORDER: PhaseName[] = [
 export function getNextPhase(
   current: PhaseName,
   flags: PhaseFlags,
+  opts: { hasDesignStudy?: boolean } = {},
 ): PhaseName | null {
   const currentIdx = PHASE_ORDER.indexOf(current);
   for (let i = currentIdx + 1; i < PHASE_ORDER.length; i++) {
     const next = PHASE_ORDER[i];
     if (next === "plan-review" && flags.planReview) return next;
     if (next === "init-app") return next; // always runs
+    if (next === "design-apply" && opts.hasDesignStudy) return next;
     if (next === "seed-demo" && flags.seedDemo) return next;
     if (next === "implement-features" && flags.implementFeatures) return next;
     if (next === "verify-builds" && flags.verifyBuilds) return next;
@@ -177,7 +199,9 @@ async function advanceOrFinish(
     );
     return;
   }
-  const next = getNextPhase(completedPhase, session.phaseFlags);
+  const next = getNextPhase(completedPhase, session.phaseFlags, {
+    hasDesignStudy: !!session.designStudyInputs,
+  });
   if (next) {
     console.log(
       `[phase-runner] advanceOrFinish: ${sessionId} ${completedPhase} → ${next}`,
@@ -246,6 +270,24 @@ export function startPhase(phase: PhaseName, sessionId: string): void {
     );
     return;
   }
+
+  if (phase === "design-study") {
+    const studyInputs = session.designStudyInputs;
+    if (!studyInputs) {
+      sessionStore.fail(
+        sessionId,
+        "design-study phase invoked but session has no designStudyInputs",
+      );
+      return;
+    }
+    startDesignStudyPhase({
+      sessionId,
+      worktreePath: session.worktreePath,
+      studyInputs,
+    });
+    return;
+  }
+
   const ctx: PhaseContext = {
     sessionId,
     worktreePath: session.worktreePath,
@@ -272,6 +314,13 @@ export function startPhase(phase: PhaseName, sessionId: string): void {
     case "qa-test":
       startQaTestPhase(ctx);
       break;
+    case "design-apply":
+      startDesignApplyPhase({
+        sessionId,
+        worktreePath: session.worktreePath,
+        studyTimestampDir: session.designStudyTimestampDir,
+      });
+      break;
     default: {
       const exhaustive: never = phase;
       console.error(`[phase-runner] startPhase: unknown phase ${exhaustive}`);
@@ -284,6 +333,12 @@ interface PhaseContext {
   worktreePath: string;
   inputs: SessionInputs;
   flags: PhaseFlags;
+}
+
+interface DesignStudyPhaseContext {
+  sessionId: string;
+  worktreePath: string;
+  studyInputs: DesignStudyInputs;
 }
 
 // ---------------------------------------------------------------------------
@@ -719,6 +774,28 @@ function startVerifyBuildsPhase(ctx: PhaseContext): void {
       console.log(`[phase-runner verify ${ctx.sessionId}]`, ...parts);
     log("starting");
     try {
+      // Pre-flight: `web/src/app/global-error.tsx` is a load-bearing Next.js
+      // 16 invariant. A missing file, or one that imports any context
+      // provider, crashes `next build` during prerender of /_global-error.
+      // Auto-repair from canonical content if the contract fails.
+      const guard = await ensureGlobalErrorValid(ctx.worktreePath);
+      if (guard.repaired) {
+        log(`global-error guard: auto-repaired (reason=${guard.reason})`);
+        sessionStore.appendEvent(ctx.sessionId, "step_progress", {
+          phase: "verify",
+          surface: "global-error-guard",
+          status: "repaired",
+          message: `Auto-repaired web/src/app/global-error.tsx (reason: ${guard.reason}). Prevents /_global-error prerender crash.`,
+        });
+      } else if (!guard.ok) {
+        log(`global-error guard: failed to repair (reason=${guard.reason})`);
+        sessionStore.fail(
+          ctx.sessionId,
+          `Pre-flight failed on web/src/app/global-error.tsx: ${guard.reason}. Fix manually then re-run verify-builds.`,
+        );
+        return;
+      }
+
       const webDir = join(ctx.worktreePath, "web");
       const mobileDir = join(ctx.worktreePath, "mobile");
 
@@ -856,4 +933,431 @@ function startQaTestPhase(ctx: PhaseContext): void {
       sessionStore.setAbortController(ctx.sessionId, null);
     }
   })();
+}
+
+// ---------------------------------------------------------------------------
+// Design-study phase — standalone single-phase flow. Does not participate in
+// the bootstrap pipeline. On completion, moves the staged `pending/sources/`
+// directory to a timestamped path and emits a `done` event with the study
+// path so the browser can offer a download link.
+// ---------------------------------------------------------------------------
+
+function startDesignStudyPhase(ctx: DesignStudyPhaseContext): void {
+  const abortController = new AbortController();
+  sessionStore.setAbortController(ctx.sessionId, abortController);
+  sessionStore.setStatus(ctx.sessionId, "bootstrapping");
+  sessionStore.appendEvent(ctx.sessionId, "step_start", {
+    phase: "design-study",
+    message: "Running /design-study (vision analysis of reference images)…",
+  });
+  const onApproval = makeOnApproval(ctx.sessionId);
+
+  void (async () => {
+    const log = (...parts: unknown[]) =>
+      console.log(`[phase-runner design-study ${ctx.sessionId}]`, ...parts);
+    log("starting");
+    const start = Date.now();
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "")
+      .replace(/-/g, "")
+      .slice(0, 15);
+    try {
+      const result = await runAgent({
+        cwd: ctx.worktreePath,
+        prompt: buildDesignStudyPrompt(ctx.studyInputs),
+        sessionId: ctx.sessionId,
+        abortController,
+        onApproval,
+        permissionMode: "default",
+        maxTurns: 30,
+        maxBudgetUsd: 1,
+      });
+      log(
+        `runAgent returned completed=${result.completed} turns=${result.numTurns ?? "?"} cost=${result.totalCostUsd ?? "?"}`,
+      );
+      sessionStore.appendEvent(ctx.sessionId, "step_complete", {
+        phase: "design-study",
+        status: result.completed ? "passed" : "failed",
+        durationMs: Date.now() - start,
+        totalCostUsd: result.totalCostUsd,
+        numTurns: result.numTurns,
+        errorMessage: result.errorMessage,
+      });
+      if (!result.completed) {
+        sessionStore.fail(
+          ctx.sessionId,
+          result.errorMessage ?? "Design study did not complete",
+        );
+        return;
+      }
+
+      // Move design/studies/pending/ → design/studies/<timestamp>/ so the
+      // skill's output has a durable, indexable path. The skill itself may
+      // already have written under a timestamp — if so, `pending/` was only
+      // used for sources and we rename it defensively.
+      const pendingDir = join(ctx.worktreePath, "design", "studies", "pending");
+      const finalDir = join(ctx.worktreePath, "design", "studies", timestamp);
+      try {
+        await rename(pendingDir, finalDir);
+      } catch (e) {
+        // If the skill already renamed, or pending/ doesn't exist, this is
+        // fine — proceed with whatever timestamp the skill emitted.
+        log(
+          `rename pending→timestamp skipped: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+
+      // Branch on session type: standalone study → terminal (status=ready);
+      // bootstrap prelude → read sidecar, apply proposed brand (if confident
+      // enough), then chain into the normal bootstrap pipeline.
+      const session = sessionStore.get(ctx.sessionId);
+      if (!session || session.type === "design-study") {
+        sessionStore.appendEvent(ctx.sessionId, "done", {
+          phase: "design-study",
+          studyPath: `design/studies/${timestamp}/DESIGN_STUDY.md`,
+          worktreePath: ctx.worktreePath,
+        });
+        sessionStore.setStatus(ctx.sessionId, "ready");
+        return;
+      }
+
+      // Bootstrap prelude — record the timestamp dir so the downstream
+      // design-apply phase can locate the sidecar, then consume brand for
+      // /init-app and advance.
+      session.designStudyTimestampDir = timestamp;
+      const resultPath = join(
+        ctx.worktreePath,
+        "design",
+        "studies",
+        timestamp,
+        "design-study-result.json",
+      );
+      let adoptedBrand: { L: number; C: number; h: number } | undefined;
+      let confidence: "low" | "medium" | "high" | "unknown" = "unknown";
+      try {
+        const raw = await readFile(resultPath, "utf8");
+        const parsed = JSON.parse(raw) as {
+          brand?: { L?: number; C?: number; h?: number };
+          confidence?: string;
+        };
+        if (
+          parsed.brand &&
+          typeof parsed.brand.L === "number" &&
+          typeof parsed.brand.C === "number" &&
+          typeof parsed.brand.h === "number"
+        ) {
+          const c = parsed.confidence;
+          confidence =
+            c === "low" || c === "medium" || c === "high" ? c : "unknown";
+          if (confidence === "medium" || confidence === "high") {
+            adoptedBrand = {
+              L: parsed.brand.L,
+              C: parsed.brand.C,
+              h: parsed.brand.h,
+            };
+          }
+        }
+      } catch (e) {
+        log(
+          `sidecar read/parse skipped: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+
+      if (adoptedBrand) {
+        session.inputs.brandColor = adoptedBrand;
+        sessionStore.appendEvent(ctx.sessionId, "step_progress", {
+          phase: "design-study",
+          message: `Adopted proposed brand (confidence=${confidence}): L=${adoptedBrand.L} C=${adoptedBrand.C} h=${adoptedBrand.h}. /init-app will pass this to --brand-color.`,
+          brandColor: adoptedBrand,
+          confidence,
+        });
+      } else {
+        sessionStore.appendEvent(ctx.sessionId, "step_progress", {
+          phase: "design-study",
+          message: `Prelude complete — no brand adopted (confidence=${confidence}). Using slider-input brand (or default) for /init-app.`,
+          confidence,
+        });
+      }
+
+      const nextPhase = getFirstPhase(session.phaseFlags);
+      log(`prelude complete → chaining to ${nextPhase}`);
+      await triggerNextPhase(ctx.sessionId, nextPhase);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      log(`threw — failing session: ${message}`);
+      sessionStore.fail(ctx.sessionId, message);
+    } finally {
+      sessionStore.setAbortController(ctx.sessionId, null);
+    }
+  })();
+}
+
+// ---------------------------------------------------------------------------
+// Design-apply phase — runs after /init-app, before seed-demo + feature
+// implementation. Reads the sidecar produced by the design-study prelude,
+// applies brand/font/radius/accent deltas to `design/tokens.json`, regens
+// tokens via `bin/design-tokens.sh`, spins up the web dev server, and pauses
+// with an approval_request that carries a preview URL. Approve continues the
+// chain; reject rolls back the token files and continues with the original
+// design.
+// ---------------------------------------------------------------------------
+
+interface DesignApplyPhaseContext {
+  sessionId: string;
+  worktreePath: string;
+  studyTimestampDir?: string;
+}
+
+function startDesignApplyPhase(ctx: DesignApplyPhaseContext): void {
+  const abortController = new AbortController();
+  sessionStore.setAbortController(ctx.sessionId, abortController);
+  sessionStore.setStatus(ctx.sessionId, "bootstrapping");
+  sessionStore.appendEvent(ctx.sessionId, "step_start", {
+    phase: "design-apply",
+    message:
+      "Applying proposed design deltas + starting preview dev server for approval…",
+  });
+
+  void (async () => {
+    const log = (...parts: unknown[]) =>
+      console.log(`[phase-runner design-apply ${ctx.sessionId}]`, ...parts);
+    log("starting");
+
+    if (!ctx.studyTimestampDir) {
+      log(
+        "no designStudyTimestampDir on session — prelude didn't run; skipping gracefully.",
+      );
+      sessionStore.appendEvent(ctx.sessionId, "step_complete", {
+        phase: "design-apply",
+        status: "skipped",
+        message:
+          "No design-study prelude output found on this session — skipping.",
+      });
+      await advanceOrFinish(ctx.sessionId, "design-apply");
+      return;
+    }
+
+    try {
+      const sidecar = await readSidecar(
+        ctx.worktreePath,
+        ctx.studyTimestampDir,
+      );
+      if (!sidecar) {
+        log("sidecar missing — skipping design-apply.");
+        sessionStore.appendEvent(ctx.sessionId, "step_complete", {
+          phase: "design-apply",
+          status: "skipped",
+          message:
+            "design-study-result.json not found — /design-study chose not to recommend any delta.",
+        });
+        await advanceOrFinish(ctx.sessionId, "design-apply");
+        return;
+      }
+
+      // Snapshot tokens.json BEFORE applying so we can restore cleanly on
+      // rejection. init-app doesn't commit, so git checkout wouldn't work.
+      const snapshot = await snapshotTokens(ctx.worktreePath);
+      if (!snapshot.ok || !snapshot.content) {
+        sessionStore.fail(
+          ctx.sessionId,
+          `design-apply: ${snapshot.reason ?? "unknown snapshot error"}`,
+        );
+        return;
+      }
+
+      const applyResult = await applySidecarToTokensJson(
+        ctx.worktreePath,
+        sidecar,
+      );
+      if (!applyResult.ok) {
+        sessionStore.fail(
+          ctx.sessionId,
+          `design-apply: ${applyResult.reason}`,
+        );
+        return;
+      }
+      sessionStore.appendEvent(ctx.sessionId, "step_progress", {
+        phase: "design-apply",
+        status: "tokens-written",
+        applied: applyResult.applied,
+        skipped: applyResult.skipped,
+        message: summarizeApply(applyResult),
+      });
+
+      // Regenerate tokens.css + DesignTokens.kt + tokens.dtcg.json.
+      const regen = await runDesignTokensShell(
+        ctx.sessionId,
+        ctx.worktreePath,
+        abortController,
+      );
+      if (!regen.ok) {
+        sessionStore.fail(
+          ctx.sessionId,
+          `design-apply regen failed: ${regen.reason}`,
+        );
+        return;
+      }
+
+      // Start the dev server so the user can preview /design.
+      let devServer: Awaited<ReturnType<typeof startWebDevServer>>;
+      try {
+        devServer = await startWebDevServer(ctx.worktreePath, {
+          readyTimeoutMs: 90_000,
+        });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        log(`dev server start failed: ${message} — continuing without preview.`);
+        sessionStore.appendEvent(ctx.sessionId, "step_progress", {
+          phase: "design-apply",
+          status: "no-preview",
+          message: `Couldn't start dev server for preview: ${message}. Applied tokens anyway; continuing to next phase.`,
+        });
+        await advanceOrFinish(ctx.sessionId, "design-apply");
+        return;
+      }
+
+      const previewUrl = `${devServer.url}/en-US/design`;
+      log(`dev server up at ${devServer.url}; preview ${previewUrl}`);
+
+      // Pause for approval. The user reviews the preview URL and decides:
+      // - approve → continue to the next phase with the applied tokens.
+      // - reject → revert tokens + generated files, continue with original.
+      const onApproval = makeOnApproval(ctx.sessionId);
+      const decision = await onApproval({
+        toolName: "design-apply",
+        title: "Review the applied design",
+        displayName: "Design apply: review & approve",
+        input: {
+          previewUrl,
+          applied: applyResult.applied,
+          notes: applyResult.skipped,
+        },
+        decisionReason: [
+          `The /design-study skill proposed the following deltas and they've been applied to design/tokens.json:`,
+          ``,
+          summarizeApply(applyResult),
+          ``,
+          `Preview the result at:`,
+          `  ${previewUrl}`,
+          ``,
+          `Approve to keep these tokens and continue to feature implementation.`,
+          `Reject to roll back to the /init-app tokens and continue with the original design.`,
+        ].join("\n"),
+      });
+
+      stopDevServer(devServer.process);
+
+      if (decision.behavior === "deny") {
+        // Rollback: restore tokens.json from the pre-apply snapshot + regen.
+        const restored = await restoreTokens(ctx.worktreePath, snapshot.content);
+        let regenOk = true;
+        let regenReason: string | undefined;
+        if (restored.ok) {
+          const regenBack = await runDesignTokensShell(
+            ctx.sessionId,
+            ctx.worktreePath,
+            abortController,
+          );
+          regenOk = regenBack.ok;
+          regenReason = regenBack.reason;
+        }
+        sessionStore.appendEvent(ctx.sessionId, "step_complete", {
+          phase: "design-apply",
+          status: "rejected",
+          rolledBack: restored.ok && regenOk,
+          rollbackReason: restored.ok
+            ? regenOk
+              ? undefined
+              : regenReason
+            : restored.reason,
+          message:
+            restored.ok && regenOk
+              ? "Design rejected — rolled back to /init-app tokens. Continuing with original design."
+              : `Design rejected — rollback partial (${restored.reason ?? regenReason}). Continuing anyway.`,
+        });
+      } else {
+        sessionStore.appendEvent(ctx.sessionId, "step_complete", {
+          phase: "design-apply",
+          status: "approved",
+          message:
+            "Design approved — proceeding with the applied tokens to feature implementation.",
+        });
+      }
+
+      await advanceOrFinish(ctx.sessionId, "design-apply");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      log(`threw — failing session: ${message}`);
+      sessionStore.fail(ctx.sessionId, message);
+    } finally {
+      sessionStore.setAbortController(ctx.sessionId, null);
+    }
+  })();
+}
+
+function summarizeApply(r: {
+  applied: {
+    brand?: boolean;
+    fontFamily?: { sans?: boolean; mono?: boolean };
+    radius?: Array<"sm" | "md" | "lg" | "xl">;
+    accent?: boolean;
+  };
+  skipped: string[];
+}): string {
+  const parts: string[] = [];
+  if (r.applied.brand) parts.push("brand color");
+  if (r.applied.fontFamily?.sans) parts.push("fontFamily.sans");
+  if (r.applied.fontFamily?.mono) parts.push("fontFamily.mono");
+  if (r.applied.radius?.length)
+    parts.push(`radius: ${r.applied.radius.join(", ")}`);
+  if (r.applied.accent) parts.push("schema extension: accent-color");
+  const header =
+    parts.length > 0 ? `Applied: ${parts.join("; ")}.` : "No deltas applied.";
+  const notes =
+    r.skipped.length > 0 ? `\nNotes:\n  - ${r.skipped.join("\n  - ")}` : "";
+  return header + notes;
+}
+
+function runDesignTokensShell(
+  sessionId: string,
+  worktreePath: string,
+  abortController: AbortController,
+): Promise<{ ok: boolean; reason?: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("./bin/design-tokens.sh", [], {
+      cwd: worktreePath,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (c) => (stderr += c.toString()));
+    const onAbort = () => {
+      if (!child.killed) child.kill("SIGTERM");
+    };
+    abortController.signal.addEventListener("abort", onAbort);
+    child.on("close", (code) => {
+      abortController.signal.removeEventListener("abort", onAbort);
+      if (code === 0) {
+        sessionStore.appendEvent(sessionId, "bash_output", {
+          phase: "design-apply",
+          command: "./bin/design-tokens.sh",
+          status: "ok",
+        });
+        resolve({ ok: true });
+      } else {
+        resolve({
+          ok: false,
+          reason: `bin/design-tokens.sh exited ${code}: ${stderr.trim().slice(-400)}`,
+        });
+      }
+    });
+    child.on("error", (e) => {
+      abortController.signal.removeEventListener("abort", onAbort);
+      resolve({
+        ok: false,
+        reason: `spawn design-tokens.sh failed: ${e.message}`,
+      });
+    });
+  });
 }
