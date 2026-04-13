@@ -473,6 +473,116 @@ EOF
 
 } > "$KOTLIN_OUT"
 
+# --- Emit design/tokens.dtcg.json (DTCG mirror) -----------------------------
+# W3C Design Tokens Community Group mirror of the fully-expanded palette +
+# typography + radius + spacing. Consumed by tools that speak DTCG (Tokens
+# Studio in Figma, Style Dictionary).
+#
+# This is an OUTPUT, not an input. `design/tokens.json` stays the source of
+# truth. `bin/tokens-pull.sh` (Phase B) reads an *incoming* DTCG file pushed
+# by designers and writes back into tokens.json.
+#
+# Deterministic: jq sorts map entries by key (typography, radius, spacing)
+# and `from_entries` preserves that order. Object literals preserve
+# insertion order, so running twice yields byte-identical output.
+
+DTCG_OUT="design/tokens.dtcg.json"
+
+TYPO_SCALE_DTCG=$(jq '
+    .typography.scale | to_entries | sort_by(.key) |
+    map({
+        key,
+        value: {
+            "size":       {"$value": "\(.value.size)px",       "$type": "dimension"},
+            "weight":     {"$value": .value.weight,            "$type": "fontWeight"},
+            "lineHeight": {"$value": "\(.value.lineHeight)px", "$type": "dimension"}
+        }
+    }) |
+    from_entries
+' "$TOKENS_JSON")
+
+RADIUS_SCALE_DTCG=$(jq '
+    .radius | to_entries | sort_by(.key) |
+    map({key, value: {"$value": "\(.value)px", "$type": "dimension"}}) |
+    from_entries
+' "$TOKENS_JSON")
+
+SPACING_SCALE_DTCG=$(jq '
+    .spacing | to_entries | sort_by(.key) |
+    map({key, value: {"$value": "\(.value)px", "$type": "dimension"}}) |
+    from_entries
+' "$TOKENS_JSON")
+
+jq -n \
+    --arg brand_light            "$BRAND_LIGHT" \
+    --arg brand_dark             "$BRAND_DARK" \
+    --arg brand_fg_light         "$BRAND_FG_LIGHT" \
+    --arg brand_fg_dark          "$BRAND_FG_DARK" \
+    --arg background_light       "$BACKGROUND_LIGHT" \
+    --arg background_dark        "$BACKGROUND_DARK" \
+    --arg foreground_light       "$FOREGROUND_LIGHT" \
+    --arg foreground_dark        "$FOREGROUND_DARK" \
+    --arg card_light             "$CARD_LIGHT" \
+    --arg card_dark              "$CARD_DARK" \
+    --arg card_fg_light          "$CARD_FG_LIGHT" \
+    --arg card_fg_dark           "$CARD_FG_DARK" \
+    --arg muted_light            "$MUTED_LIGHT" \
+    --arg muted_dark             "$MUTED_DARK" \
+    --arg muted_fg_light         "$MUTED_FG_LIGHT" \
+    --arg muted_fg_dark          "$MUTED_FG_DARK" \
+    --arg border_light           "$BORDER_LIGHT" \
+    --arg border_dark            "$BORDER_DARK" \
+    --arg destructive_light      "$DESTRUCTIVE_LIGHT" \
+    --arg destructive_dark       "$DESTRUCTIVE_DARK" \
+    --arg destructive_fg_light   "$DESTRUCTIVE_FG_LIGHT" \
+    --arg destructive_fg_dark    "$DESTRUCTIVE_FG_DARK" \
+    --arg sans                   "$SANS_FAMILY" \
+    --arg mono                   "$MONO_FAMILY" \
+    --argjson typo               "$TYPO_SCALE_DTCG" \
+    --argjson radius             "$RADIUS_SCALE_DTCG" \
+    --argjson spacing            "$SPACING_SCALE_DTCG" \
+    '{
+        "$description": "GENERATED from design/tokens.json by bin/design-tokens.sh. Edit the source, not this file. DTCG (W3C Design Tokens Community Group) mirror, consumable by Tokens Studio and Style Dictionary.",
+        "color": {
+            "light": {
+                "brand":                 {"$value": $brand_light,          "$type": "color", "$description": "Primary brand color"},
+                "brandForeground":       {"$value": $brand_fg_light,       "$type": "color"},
+                "background":            {"$value": $background_light,     "$type": "color"},
+                "foreground":            {"$value": $foreground_light,     "$type": "color"},
+                "card":                  {"$value": $card_light,           "$type": "color"},
+                "cardForeground":        {"$value": $card_fg_light,        "$type": "color"},
+                "muted":                 {"$value": $muted_light,          "$type": "color"},
+                "mutedForeground":       {"$value": $muted_fg_light,       "$type": "color"},
+                "border":                {"$value": $border_light,         "$type": "color"},
+                "destructive":           {"$value": $destructive_light,    "$type": "color"},
+                "destructiveForeground": {"$value": $destructive_fg_light, "$type": "color"}
+            },
+            "dark": {
+                "brand":                 {"$value": $brand_dark,           "$type": "color"},
+                "brandForeground":       {"$value": $brand_fg_dark,        "$type": "color"},
+                "background":            {"$value": $background_dark,      "$type": "color"},
+                "foreground":            {"$value": $foreground_dark,      "$type": "color"},
+                "card":                  {"$value": $card_dark,            "$type": "color"},
+                "cardForeground":        {"$value": $card_fg_dark,         "$type": "color"},
+                "muted":                 {"$value": $muted_dark,           "$type": "color"},
+                "mutedForeground":       {"$value": $muted_fg_dark,        "$type": "color"},
+                "border":                {"$value": $border_dark,          "$type": "color"},
+                "destructive":           {"$value": $destructive_dark,     "$type": "color"},
+                "destructiveForeground": {"$value": $destructive_fg_dark,  "$type": "color"}
+            }
+        },
+        "typography": {
+            "fontFamily": {
+                "sans": {"$value": $sans, "$type": "fontFamily"},
+                "mono": {"$value": $mono, "$type": "fontFamily"}
+            },
+            "scale": $typo
+        },
+        "radius":  $radius,
+        "spacing": $spacing
+    }' > "$DTCG_OUT"
+
 echo "✓ Regenerated design tokens"
 echo "  → $WEB_OUT"
 echo "  → $KOTLIN_OUT"
+echo "  → $DTCG_OUT"

@@ -129,6 +129,71 @@ git diff --stat
 git diff --stat  # should be identical — zero new changes
 ```
 
-## Future work — v0.3 skill
+## Round-trip with Figma via Tokens Studio (v0.3)
 
-A future `/design-tokens` or `/rebrand` skill will wrap this workflow interactively: prompt for a brand color (accepts OKLch, hex, or named colors), optionally generate hue-tinted neutrals (vs. the fixed gray neutrals of v0.2), preview the palette in a temporary HTML file, and commit the regenerated tokens. The scaffolding in v0.2 — `tokens.json` schema, bash generator, Kotlin `oklchToArgb` helper — is the substrate the skill will build on.
+Starting in v0.3, design tokens can round-trip to and from Figma using the [Tokens Studio](https://tokens.studio) plugin, which speaks W3C **DTCG** (Design Tokens Community Group) JSON over Git sync. No API keys, no server — designers commit a JSON file through the plugin, developers pull it here.
+
+### Three files, two directions
+
+- **`tokens.json`** — canonical source of truth. Hand-edited when changing the brand directly in code. Never auto-overwritten except by `bin/tokens-pull.sh`.
+- **`tokens.dtcg.json`** — generated DTCG mirror of the fully-expanded palette (light + dark) + typography + radius + spacing. Committed. This is what Tokens Studio reads to see the code-side state.
+- **`tokens.dtcg.incoming.json`** — handoff file written by Tokens Studio's Git sync. Transient; `bin/tokens-pull.sh` reads it, merges expressible fields back into `tokens.json`, and leaves regenerated outputs committed. Can be `.gitignore`d or committed — project choice.
+
+### Code → Figma (export)
+
+1. Edit `tokens.json`, run `./bin/design-tokens.sh`. Regenerates `tokens.css`, `DesignTokens.kt`, AND `tokens.dtcg.json`.
+2. Commit and push.
+3. Designer opens Figma, the Tokens Studio plugin pulls from the configured Git branch.
+4. Tokens appear as Figma Variables / styles.
+
+### Figma → code (import)
+
+1. Designer edits tokens in Tokens Studio.
+2. Plugin pushes a DTCG blob to `design/tokens.dtcg.incoming.json` on a branch.
+3. Developer pulls the branch and runs:
+   ```bash
+   ./bin/tokens-pull.sh
+   ```
+   Or triggers the `/design-import` skill, which wraps the same flow + build verification.
+4. Script extracts brand OKLch + font families + typography scale + radius + spacing into `tokens.json`, warns on any fields the bespoke schema cannot express, regenerates outputs.
+5. Developer reviews `git diff`, commits.
+
+### What the bespoke schema can express
+
+- **One brand color** — an OKLch triplet. The rest of the palette (muted, border, destructive, card, all foregrounds) is derived from brand + fixed neutrals.
+- **Dark mode** — derived from light-mode brand via an L-flip formula. Not overridable.
+- **Two font families** — `sans` and `mono`.
+- **Six typography scale entries** — Material 3 names (`displayLarge`, `headlineLarge`, `titleLarge`, `bodyLarge`, `bodyMedium`, `labelMedium`). Each has size, weight, lineHeight.
+- **Four radius slots** — `sm`, `md`, `lg`, `xl` (mapped to Compose `Shapes.small/medium/large/extraLarge`).
+- **Arbitrary spacing keys** — any numeric-string key ("1", "2", "6", …) with a px value.
+
+### What the importer ignores (with warnings)
+
+- Arbitrary non-brand colors (e.g. manually-overridden `muted` or `destructive`). Schema extension goes through `/design-study`.
+- Explicit `color.dark.*` entries. Dark mode is derived.
+- Typography scale entries beyond the six supported names (e.g. `caption`, `display2`).
+- Radius slots beyond `sm`/`md`/`lg`/`xl`.
+
+Warnings include what to do instead — usually "run `/design-study` to propose a schema extension".
+
+### Round-trip invariant (automated test)
+
+```bash
+./bin/design-tokens.sh
+cp design/tokens.dtcg.json design/tokens.dtcg.incoming.json
+./bin/tokens-pull.sh
+./bin/design-tokens.sh
+git diff design/tokens.dtcg.json   # must be empty
+```
+
+If this breaks, the importer and the generator have diverged.
+
+### Schema extensions (beyond the expressible set)
+
+When Triplane needs to support a new token category (a distinct `accent` color, a `motion` scale, an `elevation` scale), the entry point is **`/design-study`** — reads reference screenshots or URLs, infers what tokens are needed, proposes atomic edits to `tokens.schema.json`, `bin/design-tokens.sh`, AND the Compose emitter. `/design-import` alone cannot widen the schema.
+
+## Future work
+
+- Motion tokens (`motion.duration`, `motion.easing`) — v0.3.1.
+- Elevation / shadow tokens — v0.3.1.
+- Multiple brand colors (primary + secondary) — explicit out-of-scope; at most one brand plus one accent (accent added via schema extension).

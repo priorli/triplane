@@ -1,0 +1,240 @@
+{
+  "$description": "GENERATED from design/tokens.json by bin/design-tokens.sh. Edit the source, not this file. DTCG (W3C Design Tokens Community Group) mirror, consumable by Tokens Studio and Style Dictionary.",
+  "color": {
+    "light": {
+      "brand": {
+        "$value": "oklch(0.205 0.0 0.0)",
+        "$type": "color",
+        "$description": "Primary brand color"
+      },
+      "brandForeground": {
+        "$value": "oklch(0.985 0 0)",
+        "$type": "color"
+      },
+      "background": {
+        "$value": "oklch(1 0 0)",
+        "$type": "color"
+      },
+      "foreground": {
+        "$value": "oklch(0.145 0 0)",
+        "$type": "color"
+      },
+      "card": {
+        "$value": "oklch(1 0 0)",
+        "$type": "color"
+      },
+      "cardForeground": {
+        "$value": "oklch(0.145 0 0)",
+        "$type": "color"
+      },
+      "muted": {
+        "$value": "oklch(0.97 0 0)",
+        "$type": "color"
+      },
+      "mutedForeground": {
+        "$value": "oklch(0.556 0 0)",
+        "$type": "color"
+      },
+      "border": {
+        "$value": "oklch(0.922 0 0)",
+        "$type": "color"
+      },
+      "destructive": {
+        "$value": "oklch(0.577 0.245 27.325)",
+        "$type": "color"
+      },
+      "destructiveForeground": {
+        "$value": "oklch(0.985 0 0)",
+        "$type": "color"
+      }
+    },
+    "dark": {
+      "brand": {
+        "$value": "oklch(0.9700 0.0 0.0)",
+        "$type": "color"
+      },
+      "brandForeground": {
+        "$value": "oklch(0.145 0 0)",
+        "$type": "color"
+      },
+      "background": {
+        "$value": "oklch(0.145 0 0)",
+        "$type": "color"
+      },
+      "foreground": {
+        "$value": "oklch(0.985 0 0)",
+        "$type": "color"
+      },
+      "card": {
+        "$value": "oklch(0.205 0 0)",
+        "$type": "color"
+      },
+      "cardForeground": {
+        "$value": "oklch(0.985 0 0)",
+        "$type": "color"
+      },
+      "muted": {
+        "$value": "oklch(0.269 0 0)",
+        "$type": "color"
+      },
+      "mutedForeground": {
+        "$value": "oklch(0.708 0 0)",
+        "$type": "color"
+      },
+      "border": {
+        "$value": "oklch(0.269 0 0)",
+        "$type": "color"
+      },
+      "destructive": {
+        "$value": "oklch(0.704 0.191 22.216)",
+        "$type": "color"
+      },
+      "destructiveForeground": {
+        "$value": "oklch(0.985 0 0)",
+        "$type": "color"
+      }
+    }
+  },
+  "typography": {
+    "fontFamily": {
+      "sans": {
+        "$value": "Nunito",
+        "$type": "fontFamily"
+      },
+      "mono": {
+        "$value": "Geist Mono",
+        "$type": "fontFamily"
+      }
+    },
+    "scale": {
+      "bodyLarge": {
+        "size": {
+          "$value": "16px",
+          "$type": "dimension"
+        },
+        "weight": {
+          "$value": 400,
+          "$type": "fontWeight"
+        },
+        "lineHeight": {
+          "$value": "24px",
+          "$type": "dimension"
+        }
+      },
+      "bodyMedium": {
+        "size": {
+          "$value": "14px",
+          "$type": "dimension"
+        },
+        "weight": {
+          "$value": 400,
+          "$type": "fontWeight"
+        },
+        "lineHeight": {
+          "$value": "20px",
+          "$type": "dimension"
+        }
+      },
+      "displayLarge": {
+        "size": {
+          "$value": "57px",
+          "$type": "dimension"
+        },
+        "weight": {
+          "$value": 400,
+          "$type": "fontWeight"
+        },
+        "lineHeight": {
+          "$value": "64px",
+          "$type": "dimension"
+        }
+      },
+      "headlineLarge": {
+        "size": {
+          "$value": "32px",
+          "$type": "dimension"
+        },
+        "weight": {
+          "$value": 400,
+          "$type": "fontWeight"
+        },
+        "lineHeight": {
+          "$value": "40px",
+          "$type": "dimension"
+        }
+      },
+      "labelMedium": {
+        "size": {
+          "$value": "12px",
+          "$type": "dimension"
+        },
+        "weight": {
+          "$value": 500,
+          "$type": "fontWeight"
+        },
+        "lineHeight": {
+          "$value": "16px",
+          "$type": "dimension"
+        }
+      },
+      "titleLarge": {
+        "size": {
+          "$value": "22px",
+          "$type": "dimension"
+        },
+        "weight": {
+          "$value": 500,
+          "$type": "fontWeight"
+        },
+        "lineHeight": {
+          "$value": "28px",
+          "$type": "dimension"
+        }
+      }
+    }
+  },
+  "radius": {
+    "lg": {
+      "$value": "12px",
+      "$type": "dimension"
+    },
+    "md": {
+      "$value": "8px",
+      "$type": "dimension"
+    },
+    "sm": {
+      "$value": "4px",
+      "$type": "dimension"
+    },
+    "xl": {
+      "$value": "16px",
+      "$type": "dimension"
+    }
+  },
+  "spacing": {
+    "1": {
+      "$value": "4px",
+      "$type": "dimension"
+    },
+    "2": {
+      "$value": "8px",
+      "$type": "dimension"
+    },
+    "3": {
+      "$value": "12px",
+      "$type": "dimension"
+    },
+    "4": {
+      "$value": "16px",
+      "$type": "dimension"
+    },
+    "6": {
+      "$value": "24px",
+      "$type": "dimension"
+    },
+    "8": {
+      "$value": "32px",
+      "$type": "dimension"
+    }
+  }
+}
