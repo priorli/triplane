@@ -85,6 +85,7 @@ The `/release-check` skill runs all three in parallel and then invokes `/audit` 
 - **`coil-network-okhttp` is JVM-only** — use `coil-network-ktor3` instead for Compose Multiplatform.
 - **KDoc and unbalanced braces** — Kotlin/Native's KDoc parser chokes on `{...}` text that looks like unclosed inline tags. Prefer `//` line comments when the text contains braces.
 - **Kotlin/Native ObjC exporter crashes on some composeApp public types** — Kotlin/Native 2.3.10 and 2.3.20 have a `ClassCastException` inside `createConstructorAdapter` that trips on Phase 4-shaped composeApp types. **Workaround: mark `composeApp/feature/<name>/*` types as `internal`** so they're excluded from the ObjC export surface. Swift-facing bridge types (e.g. `feature/auth/ClerkAuthBridge.kt`) stay public. See the 2026-04-11 Phase 7 decisions log entry in PLAN.md for the full remediation story.
+- **Kotlin package dirs must be nested, not a single folder** — the package `com.priorli.myapp` on disk is `com/priorli/myapp/` (3 nested folders), NOT a single folder named `com.priorli.myapp` or `com\/priorli\/myapp`. When converting a dotted namespace to a path, use `tr '.' '/'` in shell (NOT `${var//./\/}` — macOS bash 3.2 leaves the `\` in the output) and `namespace.replace(/\./g, "/")` in JavaScript/TypeScript.
 
 ## Available skills
 

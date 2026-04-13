@@ -362,6 +362,29 @@ The `/upgrade-deps` skill (Phase 5) automates much of this.
 
 ---
 
+## Cross-platform shell gotchas
+
+### Kotlin package directories must be nested, not dotted or escaped
+
+**What happened:** Running `bin/init.sh` on macOS produced `mobile/shared/src/commonMain/kotlin/com\/priorli\/myapp/` — a single directory literally named `com\/priorli\/myapp` (with backslash-slash separators baked into the name) — instead of the correct nested structure `com/priorli/myapp/` (three nested directories). Same bug bit `bin/design-tokens.sh`, which writes `DesignTokens.kt` into a path derived from the namespace.
+
+**Root cause:** Both scripts used `NEW_PATH="${NAMESPACE//./\/}"`. On macOS's bash 3.2, that parameter expansion preserves the replacement's `\` literally — so every `.` becomes `\/` instead of `/`, and the resulting string is one directory name with embedded backslashes, not three nested directories. Linux bash 5 handles it correctly, which is why the bug slept through CI and only bit locally.
+
+Kotlin packages use dotted notation (`package com.priorli.myapp`) but on disk they MUST be nested directories (each dot is a directory separator). Java/Kotlin compilers will not find `MyClass.kt` if it's in a single dir named `com\/priorli\/myapp`.
+
+**Fix:** Use `tr` for the dot-to-slash conversion. It's portable across bash 3/4/5:
+
+```sh
+NEW_PATH=$(printf '%s' "$NAMESPACE" | tr '.' '/')   # ✅ correct everywhere
+NEW_PATH="${NAMESPACE//./\/}"                       # ❌ breaks on macOS bash 3.2
+```
+
+Same lesson in JavaScript/TypeScript: use `namespace.replace(/\./g, "/")`. Never assemble paths via string templates with escape tricks — the backslash will end up in a directory name somewhere.
+
+**Also fixed in `bin/design-tokens.sh`:** the script previously hardcoded `KOTLIN_OUT="…/kotlin/com/priorli/triplane/common/theme/DesignTokens.kt"` and emitted `package com.priorli.triplane.common.theme`. After `bin/init.sh` renames the namespace, the compiler couldn't find the regenerated tokens — the script was writing to the old path. Now it derives both the path and the `package` declaration from `mobile/composeApp/build.gradle.kts`'s `namespace = "..."` line.
+
+---
+
 ## Build verification practices
 
 After any non-trivial change:

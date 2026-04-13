@@ -24,7 +24,6 @@ cd "$REPO_ROOT"
 
 TOKENS_JSON="design/tokens.json"
 WEB_OUT="web/src/app/generated/tokens.css"
-KOTLIN_OUT="mobile/composeApp/src/commonMain/kotlin/com/priorli/triplane/common/theme/DesignTokens.kt"
 
 if [[ ! -f "$TOKENS_JSON" ]]; then
     echo "Error: $TOKENS_JSON not found. Run from repo root." >&2
@@ -35,6 +34,28 @@ if ! command -v jq >/dev/null 2>&1; then
     echo "Error: jq is required. Install with 'brew install jq' on macOS." >&2
     exit 1
 fi
+
+# --- Derive namespace from mobile/composeApp/build.gradle.kts ---------------
+# The Kotlin output path and `package` declaration must track the current
+# project namespace. The namespace is authoritative in composeApp's
+# build.gradle.kts (`namespace = "com.myorg.myapp"`), which `bin/init.sh`
+# rewrites during downstream bootstrap. Reading it here keeps this script
+# honest across renames.
+COMPOSE_APP_GRADLE="mobile/composeApp/build.gradle.kts"
+if [[ ! -f "$COMPOSE_APP_GRADLE" ]]; then
+    echo "Error: $COMPOSE_APP_GRADLE not found. Run from repo root." >&2
+    exit 1
+fi
+NAMESPACE=$(sed -nE 's/.*namespace *= *"([^"]+)".*/\1/p' "$COMPOSE_APP_GRADLE" | head -1)
+if [[ -z "$NAMESPACE" ]]; then
+    echo "Error: could not read 'namespace = \"...\"' from $COMPOSE_APP_GRADLE." >&2
+    exit 1
+fi
+# Use `tr` instead of `${NAMESPACE//./\/}` — macOS bash 3.2 preserves the
+# replacement's `\` literally, producing `com\/priorli\/x` with backslashes.
+# `tr` is portable and correct.
+NAMESPACE_PATH=$(printf '%s' "$NAMESPACE" | tr '.' '/')
+KOTLIN_OUT="mobile/composeApp/src/commonMain/kotlin/${NAMESPACE_PATH}/common/theme/DesignTokens.kt"
 
 # --- Font filename constants -------------------------------------------------
 # When swapping fonts, update these along with the TTF files under
@@ -261,7 +282,9 @@ EOF
 # in Theme.kt so edits to the generator don't silently break color accuracy.
 
 {
-cat <<'EOF'
+# Heredoc is UNQUOTED so `$NAMESPACE` interpolates in the `package` line.
+# Nothing else in this block contains `$` or backticks, so unquoting is safe.
+cat <<EOF
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Source:    design/tokens.json
 // Generator: bin/design-tokens.sh
@@ -269,7 +292,7 @@ cat <<'EOF'
 // To change tokens: edit design/tokens.json, then run ./bin/design-tokens.sh
 // and commit both files.
 
-package com.priorli.triplane.common.theme
+package ${NAMESPACE}.common.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Shapes
