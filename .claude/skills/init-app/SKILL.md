@@ -257,7 +257,8 @@ Run these checks AFTER the final report, BEFORE the user commits:
 2. **Clerk sign-in catch-all**: if `sign-in/page.tsx` exists without `[[...rest]]`, move it. Clerk multi-step flows need the catch-all.
 3. **`.env.example` audit**: grep `process.env.*` in `web/src/`. Every variable not in `.env.example` gets a commented entry with a note on where to get the value.
 4. **`proxy.ts` function declaration**: read `web/src/proxy.ts`. If the `proxy` export is `export const proxy = clerkMiddleware(...)` (bare library call), rewrite it as `export const proxy = clerkMiddleware((auth, request) => { ... })`. Next.js 16 silently ignores non-function proxy exports — `/` returns 404.
-5. **`prisma db push`**: if DATABASE_URL is set in `.env.local`, run `cd web && npx prisma db push`. If not, skip — mention it in the final report.
+5. **Mobile package directory sanity check**: under `mobile/shared/src/*/kotlin/` and `mobile/composeApp/src/*/kotlin/`, verify the namespace is laid out as NESTED directories (`com/priorli/myapp/` = 3 folders), not a single folder named `com.priorli.myapp` or `com\/priorli\/myapp`. Run `find mobile -type d | grep -E '[\\.]'` — any match under kotlin/ dirs indicates the escape-slash bug. Halt with the offending paths.
+6. **`prisma db push`**: if DATABASE_URL is set in `.env.local`, run `cd web && npx prisma db push`. If not, skip — mention it in the final report.
 
 ## Critical reminders
 

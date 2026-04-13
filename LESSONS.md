@@ -406,6 +406,14 @@ These gotchas surfaced during Triplane Forge test runs — automated app bootstr
 
 **Fix:** Every `process.env.*` reference should have a corresponding entry in `.env.example`. Features that add new env vars must update `.env.example` in the same PR. The `/feature continue` prompt now mandates this.
 
+### Kotlin package directories must be nested, not dotted or escaped
+
+**What happened:** A forge run created `mobile/shared/src/commonMain/kotlin/com\/priorli\/supercellua/` — a single directory literally named `com\/priorli\/supercellua` (with backslash-slash separators baked into its name) — instead of the correct nested structure `com/priorli/supercellua/` (three nested directories).
+
+**Root cause:** The `buildFeatureContinuePrompt` in `web/src/lib/forge/worker.ts` used a `<namespace>` placeholder without specifying whether it should be dotted (`com.priorli.supercellua`) or path-form (`com/priorli/supercellua`). The agent guessed wrong and — in one run — produced an escape-slashed dotted form as a single folder name. Kotlin packages use dotted notation (`package com.priorli.supercellua`) but on disk they MUST be nested directories (each dot is a directory separator).
+
+**Fix:** The prompt builder now accepts the `namespace` as a parameter, computes the path form upfront (`namespace.replace(/\./g, "/")`), and substitutes the actual path into the prompt. The `<namespace>` placeholder is gone. Added a post-init sanity check that greps for literal `\` or `.` in directory names under `mobile/*/src/*/kotlin/`.
+
 ### Next.js 16 `proxy.ts` requires a function declaration
 
 **What happened:** The landing page at `/` returned 404. All locale-prefixed routes (`/en-US/`, `/en-US/home`) worked fine, but the root `/` never redirected.

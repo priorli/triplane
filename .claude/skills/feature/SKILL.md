@@ -102,7 +102,7 @@ When invoked interactively (not via forge), implement whatever the user asks for
 
 1. Identify which platform(s) are incomplete (verified, not just spec-claimed).
 2. Read the spec's relevant section (Web Implementation or Mobile Implementation) to understand the requirements.
-3. If the platform is **mobile**: read `mobile_plan.md` for any architecture notes that apply, especially the architecture principles in `PLAN.md` (Clean Architecture, feature-based folders, native Clerk SDK, kmp-maps).
+3. If the platform is **mobile**: read `mobile_plan.md` for any architecture notes that apply, especially the architecture principles in `PLAN.md` (Clean Architecture, feature-based folders, native Clerk SDK, kmp-maps). **Directory naming:** Kotlin packages use dotted notation (`com.myorg.myapp`) but on disk must be **nested directories** — each dot is a directory separator. E.g., the package `com.myorg.myapp.feature.items` lives at `composeApp/src/commonMain/kotlin/com/myorg/myapp/feature/items/` — SIX nested folders. NEVER create a single folder named `com.myorg.myapp` or `com\/myorg\/myapp`. When the spec says `<namespace>` or `com/myorg/myapp`, it means a nested path.
 4. If the platform is **web**: read `web/AGENTS.md` if present for Next.js-specific rules.
 5. Use `EnterPlanMode` for non-trivial implementations — get user approval on the approach before writing code. (Skip plan mode only for tiny additions like a missing button or a one-line fix.)
 6. Implement. Only flip spec checkboxes and matrix columns for the platforms you actually implemented — leave deferred platforms unchecked.

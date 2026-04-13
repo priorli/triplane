@@ -536,7 +536,7 @@ function startImplementFeaturesPhase(ctx: PhaseContext): void {
         const featureStart = Date.now();
         const result = await runAgent({
           cwd: ctx.worktreePath,
-          prompt: buildFeatureContinuePrompt(slug, idx, slugs.length, ctx.flags.platformTarget),
+          prompt: buildFeatureContinuePrompt(slug, idx, slugs.length, ctx.flags.platformTarget, ctx.inputs.namespace),
           sessionId: ctx.sessionId,
           abortController,
           onApproval,

@@ -296,7 +296,15 @@ export function buildInitAppPrompt(inputs: SessionInputs): string {
     "      `export const proxy = clerkMiddleware((auth, request) => { ... })`. Next.js 16",
     "      requires the proxy export to be a recognizable function — a bare assigned",
     "      value silently fails and `/` returns 404.",
-    "   e. **`prisma db push`**: if a DATABASE_URL is available in `.env.local`,",
+    "   e. **Mobile package directory sanity check**: Kotlin packages use dotted notation",
+    "      (e.g. `com.priorli.myapp`) but on disk must be NESTED directories",
+    "      (`com/priorli/myapp/` — 3 folders, not 1). Run:",
+    "        `find mobile -type d -maxdepth 8 | grep -E '[\\\\.]' | grep -v 'mobile/iosApp\\\\|\\\\.gradle\\\\|build/'`",
+    "      If this finds any directory with a literal `\\` or a `.` in its name under",
+    "      `mobile/shared/src/*/kotlin/` or `mobile/composeApp/src/*/kotlin/`, you have",
+    "      the escape-slash bug (e.g. a single folder named `com\\/priorli\\/myapp`).",
+    "      Halt with a descriptive error showing the offending paths.",
+    "   f. **`prisma db push`**: if a DATABASE_URL is available in `.env.local`,",
     "      run `cd web && npx prisma db push` to sync the schema. If not, skip —",
     "      the user will run it themselves.",
     "",
@@ -338,9 +346,16 @@ export function buildFeatureContinuePrompt(
   idx: number,
   total: number,
   platformTarget: "web" | "mobile" | "all" = "all",
+  namespace: string = "com.example.app",
 ): string {
   const includeWeb = platformTarget === "web" || platformTarget === "all";
   const includeMobile = platformTarget === "mobile" || platformTarget === "all";
+  // Kotlin packages use dotted notation (com.priorli.myapp) but on disk must
+  // be nested directories (com/priorli/myapp). Convert here so the agent
+  // gets an unambiguous path instead of a <namespace> placeholder it might
+  // misinterpret (a prior forge run once created a single literal directory
+  // named `com\/priorli\/myapp` — see LESSONS.md "Forge-discovered gotchas").
+  const namespacePath = namespace.replace(/\./g, "/");
 
   const targetLabel =
     platformTarget === "web"
@@ -385,10 +400,11 @@ export function buildFeatureContinuePrompt(
   if (includeMobile) {
     steps.push(
       `${stepNum}. Implement the **Mobile (Android) layer**: new Clean Architecture module`,
-      "   at `mobile/shared/src/commonMain/kotlin/<namespace>/domain/" + slug + "/`",
-      "   (interfaces + use cases) + `.../data/" + slug + "/` (DTOs + repo impl)",
-      `   + \`mobile/composeApp/src/commonMain/kotlin/<namespace>/feature/${slug}/\``,
+      `   at \`mobile/shared/src/commonMain/kotlin/${namespacePath}/domain/${slug}/\``,
+      `   (interfaces + use cases) + \`mobile/shared/src/commonMain/kotlin/${namespacePath}/data/${slug}/\``,
+      `   (DTOs + repo impl) + \`mobile/composeApp/src/commonMain/kotlin/${namespacePath}/feature/${slug}/\``,
       "   (Compose screens + viewmodels).",
+      `   **Critical:** the directory \`${namespacePath}\` is NESTED — each segment (\`${namespacePath.split("/").join("\`, \`")}\`) is its own folder. NEVER create a single directory with dots or slashes in its name (e.g. do NOT create \`${namespace}\` or \`${namespacePath.replace(/\//g, "\\\\/")}\` as one folder).`,
     );
     stepNum++;
     steps.push(
