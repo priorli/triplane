@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, access } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 
@@ -227,12 +227,88 @@ export async function restoreTokens(
  * so we parse stdout until we see the "Local:" line. On failure we bail
  * early rather than block the session indefinitely.
  */
+export async function ensureWebDepsInstalled(
+  worktreePath: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<{ ok: boolean; installed: boolean; reason?: string }> {
+  const webDir = join(worktreePath, "web");
+  const nodeModulesDir = join(webDir, "node_modules");
+  try {
+    await access(nodeModulesDir);
+    return { ok: true, installed: false }; // already present
+  } catch {
+    // Not installed — run bun install.
+  }
+
+  const timeout = opts.timeoutMs ?? 180_000;
+  return new Promise((resolve) => {
+    const child = spawn("bun", ["install"], {
+      cwd: webDir,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (c) => (stderr += c.toString()));
+    const timer = setTimeout(() => {
+      if (!child.killed) child.kill("SIGTERM");
+      resolve({
+        ok: false,
+        installed: false,
+        reason: `bun install timed out after ${timeout}ms`,
+      });
+    }, timeout);
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve({ ok: true, installed: true });
+      } else {
+        resolve({
+          ok: false,
+          installed: false,
+          reason: `bun install exited ${code}: ${stderr.trim().slice(-400)}`,
+        });
+      }
+    });
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      resolve({
+        ok: false,
+        installed: false,
+        reason: `spawn bun install failed: ${e.message}`,
+      });
+    });
+  });
+}
+
+/**
+ * Pick a stable per-session port in 3100–3199 range so concurrent forge
+ * sessions don't fight over Next.js's auto-increment-from-3000 default
+ * (which collides with the forge's own dev server on 3000).
+ */
+export function sessionPreviewPort(sessionId: string): number {
+  let hash = 0;
+  for (let i = 0; i < sessionId.length; i++) {
+    hash = (hash * 31 + sessionId.charCodeAt(i)) | 0;
+  }
+  return 3100 + (Math.abs(hash) % 100);
+}
+
 export async function startWebDevServer(
   worktreePath: string,
-  opts: { readyTimeoutMs?: number } = {},
+  opts: {
+    sessionId: string;
+    readyTimeoutMs?: number;
+    onLog?: (chunk: string) => void;
+  },
 ): Promise<{ process: ChildProcess; url: string }> {
-  const timeout = opts.readyTimeoutMs ?? 60_000;
-  const child = spawn("bun", ["run", "dev"], {
+  const timeout = opts.readyTimeoutMs ?? 180_000;
+  const port = sessionPreviewPort(opts.sessionId);
+  const url = `http://localhost:${port}`;
+
+  // Force-pin the port via `next dev -p <port>` (bun forwards args after `--`).
+  // We KNOW the URL up front, so the only thing left is waiting for the
+  // server to actually answer requests.
+  const child = spawn("bun", ["run", "dev", "--", "-p", String(port)], {
     cwd: join(worktreePath, "web"),
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -240,6 +316,8 @@ export async function startWebDevServer(
 
   return new Promise((resolve, reject) => {
     let settled = false;
+    let log = "";
+
     const settle = (result: { url: string } | { error: Error }) => {
       if (settled) return;
       settled = true;
@@ -251,11 +329,38 @@ export async function startWebDevServer(
       }
     };
 
-    const timer = setTimeout(
+    // Poll the pinned port every 2s until it answers HTTP or the max timer
+    // fires. First answer (any status) = ready.
+    const startedAt = Date.now();
+    const poll = async () => {
+      if (settled || child.killed) return;
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 1_500);
+        const res = await fetch(url, {
+          method: "GET",
+          signal: controller.signal,
+          redirect: "manual",
+        });
+        clearTimeout(timer);
+        // Any response (even a 404 or 307) means Next.js is alive.
+        if (res) settle({ url });
+      } catch {
+        // server not ready; try again
+        if (!settled && Date.now() - startedAt < timeout) {
+          setTimeout(poll, 2_000);
+        }
+      }
+    };
+    // Give Next.js a few seconds before the first probe to avoid spamming
+    // the unborn port.
+    setTimeout(poll, 3_000);
+
+    const maxTimer = setTimeout(
       () =>
         settle({
           error: new Error(
-            `dev server did not report a Local URL within ${timeout}ms`,
+            `dev server did not respond on ${url} within ${timeout}ms. Tail of output:\n${log.slice(-1500)}`,
           ),
         }),
       timeout,
@@ -263,23 +368,22 @@ export async function startWebDevServer(
 
     const onData = (chunk: Buffer) => {
       const text = chunk.toString();
-      // Next.js prints e.g. "- Local:        http://localhost:3000"
-      const match = text.match(/Local:\s+(https?:\/\/\S+)/);
-      if (match) {
-        clearTimeout(timer);
-        settle({ url: match[1].replace(/\/$/, "") });
-      }
+      log += text;
+      if (log.length > 16_384) log = log.slice(-16_384);
+      if (opts.onLog) opts.onLog(text);
     };
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     child.on("exit", (code) => {
-      clearTimeout(timer);
+      clearTimeout(maxTimer);
       settle({
-        error: new Error(`dev server exited before ready (code ${code})`),
+        error: new Error(
+          `dev server exited before ready (code ${code}). Tail of output:\n${log.slice(-1500)}`,
+        ),
       });
     });
     child.on("error", (e) => {
-      clearTimeout(timer);
+      clearTimeout(maxTimer);
       settle({ error: e });
     });
   });

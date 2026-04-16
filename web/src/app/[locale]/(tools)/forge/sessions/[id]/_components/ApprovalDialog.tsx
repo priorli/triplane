@@ -41,6 +41,11 @@ export function ApprovalDialog({ pending, resolving, onApprove, onReject }: Prop
   const titleText = pending
     ? (pending.title ?? pending.displayName ?? `Run ${pending.toolName}`)
     : "";
+  const previewUrl =
+    typeof pending?.input?.previewUrl === "string"
+      ? (pending.input.previewUrl as string)
+      : null;
+  const isWidePreview = previewUrl !== null;
 
   return (
     <Dialog
@@ -52,7 +57,7 @@ export function ApprovalDialog({ pending, resolving, onApprove, onReject }: Prop
         }
       }}
     >
-      <DialogContent>
+      <DialogContent className={isWidePreview ? "sm:max-w-5xl" : undefined}>
         <DialogHeader>
           <DialogTitle>Approval required</DialogTitle>
           <DialogDescription>
@@ -73,10 +78,36 @@ export function ApprovalDialog({ pending, resolving, onApprove, onReject }: Prop
               <p className="text-sm">{titleText}</p>
             </div>
 
+            {previewUrl && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Live preview from worktree dev server
+                  </p>
+                  <a
+                    href={previewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-brand hover:underline"
+                  >
+                    {previewUrl} ↗
+                  </a>
+                </div>
+                <div className="rounded-lg border overflow-hidden bg-background">
+                  <iframe
+                    src={previewUrl}
+                    title="Design preview"
+                    className="w-full h-[60vh] border-0"
+                    sandbox="allow-scripts allow-same-origin"
+                  />
+                </div>
+              </div>
+            )}
+
             {pending.decisionReason && (
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">Reason</p>
-                <p className="text-sm">{pending.decisionReason}</p>
+                <p className="text-sm whitespace-pre-line">{pending.decisionReason}</p>
               </div>
             )}
 

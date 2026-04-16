@@ -115,13 +115,19 @@ BRAND_L_DARK=$(awk -v l="$BRAND_L" 'BEGIN {
 }')
 
 # --- Derive brandForeground lightness (light + dark mode) --------------------
-# High brand lightness → dark foreground (near-black). Low brand lightness →
-# light foreground (near-white). Threshold at L=0.5.
+# Chroma-aware threshold: achromatic brands (C < 0.05) flip to dark text at
+# L > 0.5, matching the classic grayscale rule. Saturated brands (C ≥ 0.05)
+# flip later at L > 0.7, because a saturated mid-tone color perceives darker
+# than its L suggests — black-on-coral/black-on-purple reads as "muddy, not
+# punchy", whereas white text on a saturated mid-tone is the modern CTA look.
 brand_foreground_l() {
-    awk -v l="$1" 'BEGIN { printf "%.3f", (l > 0.5) ? 0.145 : 0.985 }'
+    awk -v l="$1" -v c="$2" 'BEGIN {
+        threshold = (c >= 0.05) ? 0.7 : 0.5
+        printf "%.3f", (l > threshold) ? 0.145 : 0.985
+    }'
 }
-BRAND_FG_L_LIGHT=$(brand_foreground_l "$BRAND_L")
-BRAND_FG_L_DARK=$(brand_foreground_l "$BRAND_L_DARK")
+BRAND_FG_L_LIGHT=$(brand_foreground_l "$BRAND_L"      "$BRAND_C")
+BRAND_FG_L_DARK=$(brand_foreground_l  "$BRAND_L_DARK" "$BRAND_C")
 
 if [[ "$HAS_ACCENT" == "true" ]]; then
     ACCENT_L_DARK=$(awk -v l="$ACCENT_L" 'BEGIN {
@@ -130,8 +136,8 @@ if [[ "$HAS_ACCENT" == "true" ]]; then
         if (v > 0.97) v = 0.97
         printf "%.4f", v
     }')
-    ACCENT_FG_L_LIGHT=$(brand_foreground_l "$ACCENT_L")
-    ACCENT_FG_L_DARK=$(brand_foreground_l "$ACCENT_L_DARK")
+    ACCENT_FG_L_LIGHT=$(brand_foreground_l "$ACCENT_L"      "$ACCENT_C")
+    ACCENT_FG_L_DARK=$(brand_foreground_l  "$ACCENT_L_DARK" "$ACCENT_C")
 fi
 
 # --- OKLch string helper -----------------------------------------------------

@@ -29,8 +29,6 @@ import {
   applySidecarToTokensJson,
   snapshotTokens,
   restoreTokens,
-  startWebDevServer,
-  stopDevServer,
 } from "./design-apply";
 
 // PHASE RUNNER — v0.1.3 architectural refactor.
@@ -70,12 +68,13 @@ export type PhaseName =
 // Bootstrap pipeline. `design-study` is a standalone single-phase flow for
 // the /forge/design page; when run as a prelude on a bootstrap session it
 // emits the sidecar and chains into `design-apply`, which applies the
-// sidecar to tokens, spins up a dev server, and pauses for approval before
-// `implement-features` so features get built against the studied design.
+// sidecar to tokens, spins up a dev server, and pauses for approval FIRST —
+// before the heavy plan-review + init-app phases — so the user can accept or
+// reject the proposed design without waiting minutes for everything else.
 const PHASE_ORDER: PhaseName[] = [
+  "design-apply",
   "plan-review",
   "init-app",
-  "design-apply",
   "seed-demo",
   "implement-features",
   "verify-builds",
@@ -1064,25 +1063,36 @@ function startDesignStudyPhase(ctx: DesignStudyPhaseContext): void {
         );
       }
 
+      // Prelude no longer mutates session.inputs.brandColor. The new
+      // design-apply phase runs BEFORE init-app and writes the studied
+      // brand (plus fonts/radius/accent) directly into tokens.json through
+      // the approval gate. init-app reads tokens.json via
+      // `bin/design-tokens.sh`, so there's no need to piggyback on
+      // --brand-color. Rejection at design-apply restores tokens.json from
+      // snapshot, and init-app then uses whatever the user originally
+      // provided (or default).
       if (adoptedBrand) {
-        session.inputs.brandColor = adoptedBrand;
         sessionStore.appendEvent(ctx.sessionId, "step_progress", {
           phase: "design-study",
-          message: `Adopted proposed brand (confidence=${confidence}): L=${adoptedBrand.L} C=${adoptedBrand.C} h=${adoptedBrand.h}. /init-app will pass this to --brand-color.`,
+          message: `Prelude complete — brand candidate L=${adoptedBrand.L} C=${adoptedBrand.C} h=${adoptedBrand.h} (confidence=${confidence}) queued for design-apply.`,
           brandColor: adoptedBrand,
           confidence,
         });
       } else {
         sessionStore.appendEvent(ctx.sessionId, "step_progress", {
           phase: "design-study",
-          message: `Prelude complete — no brand adopted (confidence=${confidence}). Using slider-input brand (or default) for /init-app.`,
+          message: `Prelude complete — low-confidence or missing brand (confidence=${confidence}). design-apply will skip brand unless the sidecar upgrades confidence.`,
           confidence,
         });
       }
 
-      const nextPhase = getFirstPhase(session.phaseFlags);
-      log(`prelude complete → chaining to ${nextPhase}`);
-      await triggerNextPhase(ctx.sessionId, nextPhase);
+      // Route via advanceOrFinish so PHASE_ORDER + getNextPhase's
+      // `hasDesignStudy` opt-in decide whether design-apply runs first.
+      // For bootstrap sessions with staged references, design-apply always
+      // comes before plan-review/init-app, so the user can accept/reject
+      // the design preview without waiting for the heavy phases.
+      log(`prelude complete → advancing`);
+      await advanceOrFinish(ctx.sessionId, "design-study");
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       log(`threw — failing session: ${message}`);
@@ -1199,31 +1209,42 @@ function startDesignApplyPhase(ctx: DesignApplyPhaseContext): void {
         return;
       }
 
-      // Start the dev server so the user can preview /design.
-      let devServer: Awaited<ReturnType<typeof startWebDevServer>>;
-      try {
-        devServer = await startWebDevServer(ctx.worktreePath, {
-          readyTimeoutMs: 90_000,
-        });
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        log(`dev server start failed: ${message} — continuing without preview.`);
-        sessionStore.appendEvent(ctx.sessionId, "step_progress", {
-          phase: "design-apply",
-          status: "no-preview",
-          message: `Couldn't start dev server for preview: ${message}. Applied tokens anyway; continuing to next phase.`,
-        });
-        await advanceOrFinish(ctx.sessionId, "design-apply");
-        return;
-      }
+      // Preview URL points at a FORGE-side preview page that reads the
+      // worktree's freshly-regenerated tokens.css and renders
+      // <DesignShowcase /> with the applied tokens. No second dev server
+      // needed — instant, same-origin, always works.
+      const session = sessionStore.get(ctx.sessionId);
+      const baseUrl =
+        session?.baseUrl ??
+        process.env.FORGE_BASE_URL ??
+        "http://localhost:3000";
+      const previewUrl = `${baseUrl}/en-US/forge/sessions/${ctx.sessionId}/preview`;
+      log(`preview available at ${previewUrl}`);
 
-      const previewUrl = `${devServer.url}/en-US/design`;
-      log(`dev server up at ${devServer.url}; preview ${previewUrl}`);
-
-      // Pause for approval. The user reviews the preview URL and decides:
+      // Pause for approval. The user reviews the preview URL (if any) and
+      // decides:
       // - approve → continue to the next phase with the applied tokens.
       // - reject → revert tokens + generated files, continue with original.
       const onApproval = makeOnApproval(ctx.sessionId);
+      const reasonLines = [
+        `The /design-study skill proposed the following deltas and they've been applied to design/tokens.json:`,
+        ``,
+        summarizeApply(applyResult),
+        ``,
+      ];
+      if (previewUrl) {
+        reasonLines.push(`Preview the result at:`, `  ${previewUrl}`, ``);
+      } else {
+        reasonLines.push(
+          `Preview dev server couldn't start — approve/reject based on the applied tokens summary above. You can also run \`cd ${ctx.worktreePath}/web && bun run dev\` yourself in another terminal.`,
+          ``,
+        );
+      }
+      reasonLines.push(
+        `Approve to keep these tokens and continue to feature implementation.`,
+        `Reject to roll back to the /init-app tokens and continue with the original design.`,
+      );
+
       const decision = await onApproval({
         toolName: "design-apply",
         title: "Review the applied design",
@@ -1232,21 +1253,12 @@ function startDesignApplyPhase(ctx: DesignApplyPhaseContext): void {
           previewUrl,
           applied: applyResult.applied,
           notes: applyResult.skipped,
+          worktreePath: ctx.worktreePath,
         },
-        decisionReason: [
-          `The /design-study skill proposed the following deltas and they've been applied to design/tokens.json:`,
-          ``,
-          summarizeApply(applyResult),
-          ``,
-          `Preview the result at:`,
-          `  ${previewUrl}`,
-          ``,
-          `Approve to keep these tokens and continue to feature implementation.`,
-          `Reject to roll back to the /init-app tokens and continue with the original design.`,
-        ].join("\n"),
+        decisionReason: reasonLines.join("\n"),
       });
 
-      stopDevServer(devServer.process);
+      // Forge-side preview; no dev server to stop.
 
       if (decision.behavior === "deny") {
         // Rollback: restore tokens.json from the pre-apply snapshot + regen.
