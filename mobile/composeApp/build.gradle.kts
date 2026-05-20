@@ -74,6 +74,7 @@ kotlin {
         androidMain.dependencies {
             implementation(compose.preview)
             implementation("androidx.activity:activity-compose:1.9.3")
+            implementation(libs.androidx.core.splashscreen)
             implementation(libs.koin.android)
             implementation(libs.clerk.android.api)
             implementation(libs.clerk.android.ui)

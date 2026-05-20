@@ -69,12 +69,28 @@ The full numbered list (with rationale) is in `PLAN.md` § Architecture principl
 ```bash
 cd web && bun run build                                                       # web
 cd mobile && ./gradlew :composeApp:assembleDebug                              # Android
-cd mobile && ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64        # iOS framework (includes ObjC export)
+cd mobile && ./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64        # iOS framework link (includes ObjC export)
+
+# iOS launch verification — the bar that catches PlistSanityCheck, missing
+# startKoin, runtime IrLinkageError, and other launch-time crashes that
+# `xcodebuild build` greens through silently. Build green ≠ launch green.
+cd mobile && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
+  -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' \
+  CODE_SIGNING_ALLOWED=NO build
+SIM_ID=$(xcrun simctl list devices | grep "iPhone 17 (" | head -1 | grep -oE '\([0-9A-F-]{36}\)' | tr -d '()')
+xcrun simctl boot "$SIM_ID" 2>/dev/null || true
+APP="$(xcodebuild -showBuildSettings -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -destination "platform=iOS Simulator,id=$SIM_ID" | grep -m1 BUILT_PRODUCTS_DIR | awk '{print $3}')/Triplane.app"
+xcrun simctl install "$SIM_ID" "$APP"
+xcrun simctl launch "$SIM_ID" com.priorli.triplane
+sleep 3 && pgrep -f Triplane >/dev/null && echo "alive" || echo "CRASHED — see ~/Library/Logs/DiagnosticReports/Triplane-*.ips"
 ```
 
-**Do not** use `:composeApp:compileKotlinIosSimulatorArm64` as the iOS verification target. That task only performs source-level compilation and does NOT run the ObjC header exporter — which means it can silently green while the framework link task fails. Phase 4 shipped an ObjC-export crash this way and it took until Phase 7 to find. The `linkDebugFrameworkIosSimulatorArm64` task runs the full framework build including ObjC export and is the correct bar.
+**Why three legs, not one:**
+- `assembleDebug` catches Android compile + lint regressions.
+- `linkDebugFrameworkIosSimulatorArm64` catches K/N → ObjC export regressions that `compileKotlinIosSimulatorArm64` (compile-only) silently skips. **Do not** use `compileKotlinIosSimulatorArm64` as the iOS bar.
+- `xcodebuild build` + `simctl install` + `simctl launch` + 3-second liveness catches what builds *don't*: Compose `PlistSanityCheck`, missing `startKoin {}`, runtime `IrLinkageError` from dep version skew, and any other initialization crash that fires only when the simulator actually executes the app's first instruction. Phase 7 shipped an iOS app that "built green" but crashed within 1s of every launch — see Travolp 2026-05-07 lessons.
 
-The `/release-check` skill runs all three in parallel and then invokes `/audit` for drift detection — prefer it.
+The `/release-check` skill runs the build legs in parallel and then invokes `/audit` for drift detection — prefer it. (TODO: wire the install+launch leg into `/release-check`; tracked in PLAN.md decisions log 2026-05-07.)
 
 ## Common gotchas (from LESSONS.md)
 
@@ -86,7 +102,21 @@ The `/release-check` skill runs all three in parallel and then invokes `/audit` 
 - **Next.js 16 `params` is a `Promise<...>`** — always `await params` in route handlers and Server Components. In Client Components, use `use(params)` from React.
 - **`coil-network-okhttp` is JVM-only** — use `coil-network-ktor3` instead for Compose Multiplatform.
 - **KDoc and unbalanced braces** — Kotlin/Native's KDoc parser chokes on `{...}` text that looks like unclosed inline tags. Prefer `//` line comments when the text contains braces.
-- **Kotlin/Native ObjC exporter crashes on some composeApp public types** — Kotlin/Native 2.3.10 and 2.3.20 have a `ClassCastException` inside `createConstructorAdapter` that trips on Phase 4-shaped composeApp types. **Workaround: mark `composeApp/feature/<name>/*` types as `internal`** so they're excluded from the ObjC export surface. Swift-facing bridge types (e.g. `feature/auth/ClerkAuthBridge.kt`) stay public. See the 2026-04-11 Phase 7 decisions log entry in PLAN.md for the full remediation story.
+- **`IrExternalPackageFragmentImpl → IrClass` cast crash during iOS link is a `kotlinx-datetime` version-skew, NOT a K/N exporter bug.** When `linkDebugFrameworkIosSimulatorArm64` crashes inside `createConstructorAdapter`, it's almost always a transitive dep that pulled `kotlinx-datetime` 0.7.1 (where `Instant` is a typealias) while the local pin is 0.6.2 (where it's a class). Bump `kotlinx-datetime` in `libs.versions.toml` to whatever `dependencyInsight --configuration iosSimulatorArm64CompileKlibraries --dependency org.jetbrains.kotlinx:kotlinx-datetime` reports as resolved. Triplane's pin is `0.7.1`; downstream forks bumping CMP/material3 should re-check this. See LESSONS.md § "Pain: `IrExternalPackageFragmentImpl → IrClass` cast crash".
+- **`internal` for `composeApp/feature/<name>/*` is good API hygiene, not a K/N bug workaround.** Keeps the Swift-facing surface small (only `feature/auth/ClerkAuthBridge.kt` stays `public`). Originally adopted as a workaround for the cast crash above, but the actual root cause was the dep skew — the convention stays for hygiene reasons.
+- **Turn on `-Xpartial-linkage-loglevel=error` first when iOS link breaks mysteriously.** Add to `composeApp/build.gradle.kts` inside `kotlin { ... }`:
+  ```kotlin
+  targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget::class.java).configureEach {
+      binaries.all { freeCompilerArgs += listOf("-Xpartial-linkage-loglevel=error") }
+  }
+  ```
+  Converts cryptic `IrExternalPackageFragmentImpl → IrClass` cast crashes into clear `unlinked class symbol '<package>/<Class>|null[0]'` messages. Single highest-leverage diagnostic for K/N issues.
+- **Module version coherence is not automatic.** Adding `compose.material3` can pull `kotlinx-datetime` 0.7.1 transitively; Gradle conflict-resolution promotes to 0.7.1 but the local klibs were compiled against the pinned-lower version, so cross-module IR refs corrupt. After every dep change, run `./gradlew :composeApp:dependencyInsight --configuration iosSimulatorArm64CompileKlibraries --dependency <name>` for the deps you care about (especially `kotlinx-datetime`, `koin`, anything in `compose.*`).
+- **`koin-compose-viewmodel:4.0.x` is incompatible with `lifecycle-viewmodel-compose:2.10.0`** — surfaces as runtime `IrLinkageError` reading a private `LocalViewModelStoreOwner.<companion>.stable` at first composition. Fix: bump `koin = "4.2.1"` (≥ 4.1.x rebuilt against modern lifecycle).
+- **`startKoin {}` must be called in `MainViewController.kt` on iOS.** Android starts Koin in `MainActivity.onCreate`; iOS gets nothing by default. Without an idempotent `startKoin {}` inside the `ComposeUIViewController` lambda, the app crashes at first composition with `IllegalStateException: KoinApplication has not been started`. Use `KoinPlatform.getKoin()` + `runCatching` for the idempotent guard — `GlobalContext.getOrNull()` is not always re-exported on iOS in koin 4.x.
+- **xcconfig `//` is a comment.** `API_BASE_URL = https://...` truncates to `https:`. Workaround: `https:/$()/host`. The `$()` expands to nothing at evaluation time.
+- **`xcodebuild -destination 'generic/platform=iOS Simulator'` produces multi-arch `ARCHS`.** Breaks `embedAndSignAppleFrameworkForXcode` with `Could not infer iOS target architectures`. Use `'platform=iOS Simulator,name=iPhone 17'` or similar specific simulator instead.
+- **`xcodebuild build` is NOT the iOS verification bar.** A successful Xcode build means the binary linked and signed. It does NOT mean Compose's `PlistSanityCheck` passes, that Koin is started, or that runtime `IrLinkageError` doesn't trip. Always finish with `xcrun simctl install + launch` and a 3-second liveness check — see § Build verification.
 - **`web/src/app/global-error.tsx` is a load-bearing invariant.** Next.js 16 prerenders `/_global-error` as part of `next build`. If the file is missing, or if it imports ANY context provider (`ClerkProvider`, `NextIntlClientProvider`, `ThemeProvider`, anything with a React context), the build crashes with `Cannot read properties of null (reading 'useContext')`. The file must be `"use client"`, render its own `<html>`/`<body>`, and pull nothing from providers. Treat it as a template contract: do not edit, do not wrap in providers, do not move it under `[locale]/`. Canonical content lives at `web/src/lib/forge/canonical/global-error.tsx.ts` — forge verify-builds auto-repairs drift via `web/src/lib/forge/verify-global-error.ts`, and `/init-app` Step 7 has a matching pre-flight check for standalone runs.
 - **`NODE_ENV=development` during `next build`** breaks prerendering. The build script uses `NODE_ENV=production next build` to prevent shell inheritance from the dev session.
 - **Clerk `<SignIn/>` needs `[[...rest]]` catch-all** — a static `sign-in/page.tsx` 404s on Clerk sub-routes (`/sign-in/factor-one`, `/sign-in/sso-callback`). Use `sign-in/[[...rest]]/page.tsx`.
@@ -94,6 +124,12 @@ The `/release-check` skill runs all three in parallel and then invokes `/audit` 
 - **Missing env vars → silent 500s** — if `process.env.SOME_KEY` is undefined, routes crash before the error wrapper can produce `{ error: { code, message } }`. Every env var must be in `.env.example`.
 - **Next.js 16 `proxy.ts` must use a function declaration** — `export const proxy = clerkMiddleware(...)` silently fails. Next.js 16 renamed `middleware.ts` to `proxy.ts` and requires `export function proxy(...)` or `export const proxy = function(...)`. If the proxy never runs, next-intl locale rewrites don't happen and `/` returns 404.
 - **Kotlin package dirs must be nested, not a single folder** — the package `com.priorli.myapp` on disk is `com/priorli/myapp/` (3 nested folders), NOT a single folder named `com.priorli.myapp` or `com\/priorli\/myapp`. When building paths from a dotted namespace, use `namespace.replace(/\./g, "/")`.
+- **iOS `AuthTokenProvider.getToken()` MUST be synchronous (read `TokenStorage` directly).** `mobile/shared/.../ApiClient.kt`'s `defaultRequest { runBlocking { authTokenProvider.getToken() } }` runs on the calling coroutine's thread — `Dispatchers.Main.immediate` for `viewModelScope.launch` on iOS. `runBlocking` then blocks the main thread; if `getToken` calls into Swift and Swift schedules `Task { @MainActor }`, the Task can never run because the main actor is held. Deadlock. The Swift bridge keeps the cache warm via Clerk's `auth.events` stream + a 30-s backstop refresh; the Ktor hot path reads `NSUserDefaults["clerk_token"]` synchronously. See LESSONS.md § "Pain: iOS auth deadlock".
+- **iOS `isSignedIn` derives from the cached JWT, NOT `Clerk.shared.user`.** Clerk's local state can lag the server: after server-side invalidation, `Clerk.shared.user` stays non-nil AND `Clerk.shared.auth.signOut()` itself fails with `ClerkAPIError(code: "signed_out")`, so you can't use either to clear local state. The cache (NSUserDefaults `"clerk_token"`) is the single source of truth — when `cacheCurrentToken()` fails it writes nil, the bridge's polling sees the change, `rememberIsSignedIn` flips, NavGraph navigates back to Auth.
+- **`xcrun simctl install` of an unsigned build (`CODE_SIGNING_ALLOWED=NO`) breaks Clerk auth.** Unsigned builds get a different Keychain access group than dev-signed builds; sessions persisted by one are invisible to the other and the server rejects the resulting session cookies. Symptoms: "Not Authenticated" only in the simulator, real device works, Xcode-launched simulator works. **For any auth-touching iOS change, launch from Xcode** — the Run Script phase still rebuilds the Kotlin framework so iteration stays fast. Reserve `simctl install` for non-auth smoke tests.
+- **The Clerk iOS SDK module is `ClerkKit`, not `Clerk`.** The package's *name* in `Package.swift` is `"Clerk"`, but its library product is `ClerkKit` (and `ClerkKitUI`). Swift `import` resolves product/module names. So `import ClerkKit` (and `import ClerkKitUI` if using the prebuilt `AuthView`). The `Clerk` *type* (e.g. `Clerk.shared`, `Clerk.configure(...)`) lives inside the `ClerkKit` module — name resolution still works once the import is right.
+- **ClerkKit requires `IPHONEOS_DEPLOYMENT_TARGET = 17.0` minimum.** `Package.swift` declares `.iOS(.v17)`. Lower deployment targets fail with `compiling for iOS X.Y, but module 'ClerkKit' has a minimum deployment target of iOS 17.0`. Update both the pbxproj `IPHONEOS_DEPLOYMENT_TARGET` lines AND `Configuration/Config.xcconfig`.
+- **When chasing a Kotlin/Native ↔ Swift bridge "function entered but nothing inside ran" bug, look at the calling Kotlin coroutine's dispatcher first.** `Task { @MainActor }` will silently fail to drain if the main thread is blocked (not suspended). The fix is almost always on the Kotlin side: hop dispatchers, switch to a synchronous-only bridge call, or eliminate the `runBlocking`. Adding `DispatchQueue.main.async` wrappers on the Swift side is symptom-suppression — libdispatch's main queue also waits for the runloop, which is what `runBlocking` is starving.
 
 ## Available skills
 

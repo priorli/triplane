@@ -1,0 +1,12 @@
+{
+  "name": "triplane-branding",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run generate-app-icons.ts"
+  },
+  "dependencies": {
+    "opentype.js": "^1.3.4",
+    "sharp": "^0.33.5"
+  }
+}

@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.clerk.api.Clerk
 import com.priorli.triplane.di.appModule
 import com.priorli.triplane.di.platformModule
@@ -14,6 +15,9 @@ import org.koin.core.context.startKoin
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Must run before super.onCreate so the SplashScreen theme can swap
+        // to the post-splash Theme.Triplane after first frame.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
 
         // Initialize Clerk SDK

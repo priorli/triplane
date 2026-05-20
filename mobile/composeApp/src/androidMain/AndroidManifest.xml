@@ -11,6 +11,8 @@
     </queries>
     <application
         android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Triplane"
         android:supportsRtl="true"
         android:theme="@style/Theme.Triplane">
@@ -20,6 +22,7 @@
         <activity
             android:name="com.priorli.triplane.MainActivity"
             android:exported="true"
+            android:theme="@style/Theme.Triplane.Splash"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

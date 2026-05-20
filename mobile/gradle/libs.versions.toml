@@ -5,14 +5,15 @@ agp = "8.9.1"
 ktor = "3.1.1"
 kotlinx-serialization = "1.7.3"
 kotlinx-coroutines = "1.9.0"
-kotlinx-datetime = "0.6.2"
-koin = "4.0.4"
+kotlinx-datetime = "0.7.1"
+koin = "4.2.1"
 navigation-compose = "2.9.2"
 lifecycle = "2.10.0"
 clerk-android = "1.0.11"
 kmp-maps = "0.9.1"
 peekaboo = "0.5.2"
 coil = "3.4.0"
+androidx-core-splashscreen = "1.0.1"
 android-compileSdk = "36"
 android-minSdk = "26"
 android-targetSdk = "35"
@@ -59,6 +60,9 @@ peekaboo-image-picker = { module = "io.github.onseok:peekaboo-image-picker", ver
 # don't substitute `coil-network-okhttp` which is JVM-only.
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
+
+# AndroidX SplashScreen — backports the Android 12 SplashScreen API to API 23+.
+androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "androidx-core-splashscreen" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

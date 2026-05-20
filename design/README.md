@@ -197,3 +197,56 @@ When Triplane needs to support a new token category (a distinct `accent` color, 
 - Motion tokens (`motion.duration`, `motion.easing`) — v0.3.1.
 - Elevation / shadow tokens — v0.3.1.
 - Multiple brand colors (primary + secondary) — explicit out-of-scope; at most one brand plus one accent (accent added via schema extension).
+
+## Branding assets (placeholder)
+
+Triplane ships with placeholder visual identity assets — a generic mark
+(three stacked parallelograms) plus the literal `triplane.` wordmark. They
+exist so a freshly-cloned template renders something instead of default
+launcher silhouettes and Next.js scaffold SVGs, NOT to express a real brand.
+
+**The placeholder signal: a small amber `#F59E0B` dot.** Every rendered
+asset (favicon, app icon, splash, OG image) shows it. If you see the amber
+dot in a shipping build, the brand swap was skipped.
+
+`/init-app`'s brand-swap follow-up regenerates the assets from a
+downstream-supplied mark and removes the amber dot.
+
+### File checklist for `/init-app` brand swap
+
+Replace these together — leaving any one stale leaves the amber dot
+visible somewhere:
+
+**Source-of-truth + generator**
+- `mobile/branding/generate-app-icons.ts` — replace `markGroup()` and the
+  `PLANES` constant. Drop the amber `circle`. Drop the amber `path` from
+  `renderWordmark()` so the trailing dot inherits the foreground color.
+
+**Mobile (iOS)** — regenerate via `bun run generate-app-icons.ts`:
+- `mobile/iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png`
+- `mobile/iosApp/iosApp/Assets.xcassets/LaunchLogo.imageset/LaunchLogo@{1,2,3}x.png`
+- `mobile/iosApp/iosApp/Assets.xcassets/LaunchBackground.colorset/Contents.json`
+- `mobile/iosApp/iosApp/Assets.xcassets/AccentColor.colorset/Contents.json`
+
+**Mobile (Android)** — vector drawables + colors:
+- `mobile/composeApp/src/androidMain/res/drawable/ic_launcher_foreground.xml`
+- `mobile/composeApp/src/androidMain/res/drawable/ic_launcher_monochrome.xml`
+- `mobile/composeApp/src/androidMain/res/values/colors.xml` — drop `brand_amber`.
+
+**Mobile (Compose splash):**
+- `mobile/composeApp/src/commonMain/kotlin/com/priorli/triplane/feature/splash/SplashOverlay.kt` — remove `PLACEHOLDER_AMBER` constant and the amber `drawCircle` / wordmark `SpanStyle` calls.
+
+**Web:**
+- `web/src/components/brand/logo.tsx` — port new mark paths, remove the `<circle fill="#F59E0B"/>` and `<span class="text-amber-500">` dot.
+- `web/src/app/icon.tsx`
+- `web/src/app/apple-icon.tsx`
+- `web/src/app/opengraph-image.tsx` — remove the "Placeholder brand" chip in the bottom-right corner.
+
+### Why amber, why outside the token system?
+
+`design/tokens.json` defines the *shipping* brand. The amber dot is not
+part of the brand — it's a debug-time signal that the brand has not been
+configured. Putting it in `tokens.json` would make it look like a
+legitimate brand color and risk it leaking into production. The hardcoded
+literal `#F59E0B` in the files listed above is intentional. Do not extract
+it into a token.

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Triplane placeholder mark — three stacked parallelograms with an amber
+  placeholder dot. Mark drawn in a 64-unit grid, scaled to fit the 72dp
+  adaptive icon safe area centered in the 108dp canvas.
+  Mirrors mobile/branding/generate-app-icons.ts.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="18"
+        android:translateY="18"
+        android:scaleX="1.125"
+        android:scaleY="1.125">
+        <!-- Plane 3 (top / back) — drawn as a manually skewed parallelogram.
+             skewX(-12°) ≈ shifts top-edge points right by 8 * tan(12°) ≈ 1.7. -->
+        <path
+            android:pathData="M 15.7 14 L 51.7 14 L 50 22 L 14 22 Z"
+            android:fillColor="@color/brand_charcoal" />
+        <!-- Plane 2 (middle) -->
+        <path
+            android:pathData="M 11.7 28 L 47.7 28 L 46 36 L 10 36 Z"
+            android:fillColor="@color/brand_charcoal" />
+        <!-- Plane 1 (front / bottom) -->
+        <path
+            android:pathData="M 7.7 42 L 43.7 42 L 42 50 L 6 50 Z"
+            android:fillColor="@color/brand_charcoal" />
+        <!-- PLACEHOLDER amber dot — remove during /init-app brand swap. -->
+        <path
+            android:pathData="M 51 18 m -2.6 0 a 2.6 2.6 0 1 0 5.2 0 a 2.6 2.6 0 1 0 -5.2 0 Z"
+            android:fillColor="@color/brand_amber" />
+    </group>
+</vector>

@@ -20,8 +20,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Triplane",
+  title: { default: "Triplane", template: "%s · Triplane" },
   description: "Priorli's full-stack monorepo template",
+  openGraph: {
+    title: "Triplane",
+    description: "Priorli's full-stack monorepo template",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Triplane",
+    description: "Priorli's full-stack monorepo template",
+  },
 };
 
 export default async function LocaleLayout({

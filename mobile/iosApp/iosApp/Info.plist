@@ -21,9 +21,17 @@
 	<!-- Compose Multiplatform iOS REQUIRES this to be true or the app crashes on launch on iPhone 13 Pro and newer. -->
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	<!-- Launch screen (empty dict = default). Required in iOS 13+. -->
+	<!-- Launch screen — placeholder mark on white. Replace LaunchLogo asset
+	     during /init-app brand swap. -->
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>LaunchLogo</string>
+		<key>UIImageRespectsSafeAreaInsets</key>
+		<true/>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
